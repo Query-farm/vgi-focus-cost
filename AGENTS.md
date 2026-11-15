@@ -22,17 +22,27 @@ Faster loops while iterating: `make test-unit`, `make test-sql`, `make lint-expl
 
 ```
 src/focus_worker/
-  worker.py        # assembles the catalog; add new functions to FUNCTIONS
-  meta.py          # catalog/schema metadata + helpers (object_tags, column)
-  greet.py         # scalar example (overloads, ConstParam choices)
-  sequence.py      # table function example (named args, streaming state)
-  fetch_items.py   # REST API table function (pagination, retries, secrets)
-tests/             # pytest unit tests (in-process client)
+  worker.py        # assembles the catalog; FUNCTIONS + TABLES
+  meta.py          # catalog/schema metadata, agent tasks, helpers (object_tags, column)
+  focus_fn.py      # focus(path, ...): export files -> FOCUS rows
+  to_focus.py      # to_focus(subquery, ...): table in-out mapping
+  validate.py      # focus_validate(path, ...): conformance report
+  scalars.py       # classification + exact-division scalars
+  tables.py        # focus_columns, provider_map, service_map, charge_type_map
+  reader.py        # scan plan, per-file source detection, filter translation, cursor
+  scan.py          # path resolution (sample://, local, glob, http range, s3), fragments
+  convert.py       # exact decimal / timestamp / tag conversions
+  spec.py          # FOCUS column reference (data/focus_spec.json) and output types
+  services.py      # curated service -> ServiceCategory map
+  sources/         # one mapper per export format; Rule objects ARE the provider_map
+  samples/         # bundled synthetic exports (sample://...), built by scripts/make_fixtures.py
+tests/             # pytest: goldens, decimal reference, projection proof, units
 test/sql/          # sqllogictest files run through DuckDB
-test/mock_api/     # offline mock of the REST API used by tests
-examples/          # recipes: pushdown, caching, catalog tables, aggregates, COPY …
+test/fixtures/     # FOCUS sample data (CC BY 4.0, tests only)
+test/fixture_server.py  # static file server with Range support for the http tests
+examples/          # starter recipes (pushdown, caching, catalog tables, aggregates, COPY ...)
 ci/                # integration harness used by `make test-sql` and CI
-scripts/           # vgi_template.py (init / template-diff)
+scripts/           # vgi_template.py, compile_focus_spec.py, make_fixtures.py
 vgi-agent-tests.yaml  # private graders for the agent test tasks
 ```
 

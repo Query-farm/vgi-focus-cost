@@ -17,7 +17,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 # The bundled synthetic samples, then the test-only fixtures (FOCUS sample data).
-ROOTS = [Path(__file__).resolve().parent.parent / "src" / "focus_worker" / "samples", Path(__file__).resolve().parent / "fixtures"]
+ROOTS = [
+    Path(__file__).resolve().parent.parent / "src" / "focus_worker" / "samples",
+    Path(__file__).resolve().parent / "fixtures",
+]
 
 
 class RangeHandler(SimpleHTTPRequestHandler):

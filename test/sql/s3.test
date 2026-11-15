@@ -1,0 +1,55 @@
+# name: test/sql/s3.test
+# description: focus() over s3:// with credentials from a DuckDB s3 secret (local moto S3)
+# group: [focus]
+
+require vgi
+
+require-env FOCUS_WORKER
+
+require-env FOCUS_S3_ENDPOINT
+
+statement ok
+ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
+
+# The s3 secret type comes from httpfs.
+statement ok
+INSTALL httpfs;
+
+statement ok
+LOAD httpfs;
+
+statement ok
+CREATE SECRET focus_s3 (TYPE s3, KEY_ID 'focus-test-key', SECRET 'focus-test-secret', REGION 'us-east-1',
+  ENDPOINT '{FOCUS_S3_ENDPOINT}', USE_SSL false, URL_STYLE 'path', SCOPE 's3://focus-samples');
+
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('s3://focus-samples/aws_cur2/');
+----
+576	1843.212986
+
+# A glob over the bucket mixes every cloud.
+query TI
+SELECT x_SourceFormat, count(*) FROM focus.main.focus('s3://focus-samples/**/*.parquet') GROUP BY ALL ORDER BY ALL;
+----
+aws_cur2	576
+azure	158
+focus	10
+gcp	127
+
+query I
+SELECT count(*) FROM focus.main.focus('s3://focus-samples/azure/contoso-actual-cost-202607.csv');
+----
+160
+
+query I
+SELECT count(*) FROM focus.main.focus('s3://focus-samples/aws_cur2/', billing_period := '2026-08');
+----
+287
+
+statement error
+SELECT * FROM focus.main.focus('s3://focus-samples/nothing-here/');
+----
+<REGEX>:.*
+
+statement ok
+DROP SECRET focus_s3;

@@ -907,7 +907,8 @@ name = "vgi-focus-worker"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "vgi-python", extra = ["http"] },
+    { name = "pyarrow" },
+    { name = "vgi-python", extra = ["haybarn", "http"] },
 ]
 
 [package.dev-dependencies]
@@ -920,7 +921,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "vgi-python", extras = ["http"], specifier = ">=0.51.1,<0.52" }]
+requires-dist = [
+    { name = "pyarrow", specifier = ">=20" },
+    { name = "vgi-python", extras = ["http", "haybarn"], specifier = ">=0.51.1,<0.52" },
+]
 
 [package.metadata.requires-dev]
 dev = [

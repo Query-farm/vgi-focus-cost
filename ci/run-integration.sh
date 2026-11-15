@@ -46,7 +46,8 @@ REPO="$(cd "$HERE/.." && pwd)"
 STAGE="$(mktemp -d)"
 PIDS=()
 cleanup() {
-  for p in ${PIDS[@]+"${PIDS[@]}"}; do kill "$p" 2>/dev/null || true; done
+  # `uv run` launchers leave their python child behind, so stop children first.
+  for p in ${PIDS[@]+"${PIDS[@]}"}; do pkill -P "$p" 2>/dev/null || true; kill "$p" 2>/dev/null || true; done
   [ "${KEEP_STAGE:-0}" = "1" ] && echo "stage kept at $STAGE" || rm -rf "$STAGE"
 }
 trap cleanup EXIT
@@ -77,6 +78,10 @@ export FOCUS_FIXTURES="$REPO/test/fixtures"
 export FOCUS_SAMPLES="$REPO/src/focus_worker/samples"
 start_server "$STAGE/fixtures.log" $PYTHON "$REPO/test/fixture_server.py"
 export FOCUS_FIXTURE_URL="http://127.0.0.1:$PORT"
+# A local S3 (moto) holding the samples, for test/sql/s3.test.
+S3_PYTHON="${S3_PYTHON:-uv run --no-project --with moto[server]>=5,<6 python}"
+start_server "$STAGE/s3.log" $S3_PYTHON "$REPO/test/s3_server.py"
+export FOCUS_S3_ENDPOINT="127.0.0.1:$PORT"
 
 HTTP=0
 case "$TRANSPORT" in
@@ -153,7 +158,7 @@ echo "executed $executed of $total test files over $TRANSPORT ($skipped skipped)
 if [ "$executed" -lt "$MIN_EXECUTED" ]; then
   echo "::error::only $executed test files ran (MIN_EXECUTED=$MIN_EXECUTED)"; rc=1
 fi
-if [ "$HTTP" = "1" ] && ! kill -0 "${PIDS[1]}" 2>/dev/null; then
+if [ "$HTTP" = "1" ] && ! kill -0 "${PIDS[2]}" 2>/dev/null; then
   echo "::error::the HTTP worker died during the run:"; cat "$STAGE/worker.log"; rc=1
 fi
 exit "$rc"
