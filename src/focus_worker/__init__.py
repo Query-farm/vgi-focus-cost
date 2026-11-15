@@ -1,0 +1,1 @@
+"""VGI focus worker package."""
