@@ -1,12 +1,6 @@
-"""Discovery metadata: the one file to edit when you rename or extend the worker.
+"""Discovery metadata: catalog/schema docs, categories and shared helpers.
 
-DuckDB, coding agents and the ``vgi-lint`` metadata checker all read these
-tags. Keep every object documented and ``make lint`` stays at 100.
-
-* Catalog-level tags (title, license, author, links, long description) live in
-  ``CATALOG_TAGS`` below.
-* Every function and table carries ``object_tags(...)``: a title, a category
-  from ``SCHEMA_CATEGORIES``, search keywords, and LLM- and human-facing docs.
+DuckDB, coding agents and the ``vgi-lint`` metadata checker all read these tags.
 """
 
 from __future__ import annotations
@@ -19,13 +13,15 @@ import pyarrow as pa
 CATALOG_NAME = "focus"
 
 SOURCE_URL = "https://github.com/Query-farm/vgi-focus-cost"
+FOCUS_SPEC_URL = "https://focus.finops.org/focus-specification/"
 
-# Categories group functions in docs and agent tools. Every object's
-# ``vgi.category`` must name one of these.
 SCHEMA_CATEGORIES = [
-    {"name": "text", "title": "Text", "description": "Functions that build or transform strings."},
-    {"name": "generators", "title": "Generators", "description": "Table functions that generate rows."},
-    {"name": "api", "title": "REST APIs", "description": "Table functions that read from HTTP APIs."},
+    {"name": "ingest", "title": "Ingest", "description": "Read billing export files as FOCUS rows."},
+    {"name": "transform", "title": "Transform", "description": "Map rows DuckDB already has into FOCUS."},
+    {"name": "validation", "title": "Validation", "description": "Check FOCUS data against the specification."},
+    {"name": "reference", "title": "Reference", "description": "The FOCUS spec and the mapping rules as tables."},
+    {"name": "classification", "title": "Classification", "description": "Classify provider services and charges."},
+    {"name": "arithmetic", "title": "Exact Arithmetic", "description": "Exact decimal ratios for money columns."},
 ]
 
 
@@ -52,80 +48,116 @@ def column(name: str, type_: pa.DataType, comment: str, *, nullable: bool = True
     return pa.field(name, type_, nullable=nullable, metadata={b"comment": comment.encode()})
 
 
+def schema_columns_json(schema: pa.Schema) -> list[dict[str, str]]:
+    """``vgi.result_columns_schema`` entries for an Arrow schema."""
+    from .spec import duckdb_type_name
+
+    out = []
+    for f in schema:
+        comment = (f.metadata or {}).get(b"comment", b"").decode()
+        out.append({"name": f.name, "type": duckdb_type_name(f.type), "description": comment or f.name})
+    return out
+
+
+def focus_result_columns() -> list[dict[str, str]]:
+    """Result columns of ``focus()`` / ``to_focus()`` at the default version and scale."""
+    from .sources import output_schema
+    from .spec import DEFAULT_MONEY_SCALE, DEFAULT_SPEC_VERSION
+
+    return schema_columns_json(output_schema(DEFAULT_SPEC_VERSION, DEFAULT_MONEY_SCALE))
+
+
+CATALOG_DESCRIPTION = (
+    "Normalize AWS, Azure and Google Cloud billing exports into the FinOps FOCUS 1.x schema, so one DuckDB query "
+    "covers every cloud, with exact decimal money and conformance checks."
+)
+
 CATALOG_DOC_LLM = (
-    "An example VGI worker generated from the Query.Farm starter template. It shows the three "
-    "shapes most workers need: a vectorized scalar function with an overload, a deterministic "
-    "table function with a named default argument, and a table function that pages through a REST "
-    "API with retries and an optional bearer token taken from a DuckDB secret or an environment "
-    "variable. Replace them with your own functions; keep the metadata complete so agents can "
-    "discover and call them."
+    "FinOps cost data in DuckDB. `focus.main.focus(path, source := 'auto')` reads billing export files the user "
+    "already has (AWS CUR 2.0 / Data Exports, Azure cost-details exports, GCP BigQuery billing export dumps, or any "
+    "native FOCUS file; local paths, globs, https URLs or s3:// URIs) and returns FinOps Open Cost and Usage "
+    "Specification (FOCUS) rows: BilledCost/EffectiveCost/ListCost/ContractedCost as exact DECIMAL(19,6), "
+    "ChargePeriodStart/End as TIMESTAMPTZ, ChargeCategory, ServiceName, ServiceCategory, RegionId, ResourceId, "
+    "SubAccountId, Tags as a MAP, commitment discount columns and x_ provider columns. "
+    "`focus.main.to_focus(TABLE (...))` does the same mapping for rows DuckDB has already read (for example from "
+    "Azure Blob or BigQuery). `focus.main.focus_validate(path)` reports conformance (required columns, nulls, "
+    "allowed values) as rows. Reference tables: `focus_columns` (the spec, versions 1.0 to 1.4), `provider_map` "
+    "(how every FOCUS column is derived per source), `service_map`, `charge_type_map`. Scalars classify services "
+    "and charges and do exact decimal division (`focus_divide`) because `/` on DECIMAL returns DOUBLE in DuckDB. "
+    "No cloud credentials are needed: everything reads exported files."
 )
 
 CATALOG_DOC_MD = (
-    "# VGI focus worker\n\n"
-    "**An example [VGI](https://query.farm/vgi) worker that brings custom functions into DuckDB "
-    "SQL.** It was generated from the Query.Farm starter template and is meant to be renamed and "
-    "rewritten: every function here demonstrates one pattern you will reuse, from vectorized "
-    "scalars and streaming table functions to a REST API reader that retries politely and reads "
-    "a bearer token from a DuckDB secret or the environment.\n\n"
-    "The worker speaks Apache Arrow to DuckDB over stdin/stdout, a Unix socket, or HTTP, so the "
-    "same code runs as a local subprocess or a hosted service. See the "
-    "[VGI documentation](https://query.farm/vgi/docs/) to learn more."
+    "# FOCUS cost normalization\n\n"
+    "Turn AWS, Azure and Google Cloud billing exports into the FinOps Foundation's "
+    "[FOCUS](https://focus.finops.org) schema inside DuckDB: one query, every cloud.\n\n"
+    "```sql\nSELECT ProviderName, ServiceCategory, sum(EffectiveCost) AS cost\n"
+    "FROM focus.main.focus('exports/**/*') GROUP BY ALL ORDER BY cost DESC;\n```\n\n"
+    "- **Readers** for AWS CUR 2.0, Azure cost exports, GCP billing export dumps and native FOCUS files.\n"
+    "- **Exact money**: DECIMAL(19,6), never DOUBLE, rounded half-to-even.\n"
+    "- **Auditable**: every mapping rule is a row in `provider_map`.\n"
+    "- **Conformance**: `focus_validate` checks files against the FOCUS spec.\n\n"
+    "FOCUS column definitions are © FinOps Open Cost and Usage Specification (FOCUS) Series contributors, "
+    "used under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)."
 )
 
 SCHEMA_DOC_LLM = (
-    "The `main` schema holds the starter template's example functions, one per common worker "
-    "pattern. `greet(name)` and `greet(name, style)` are vectorized scalars: use them inside a "
-    "projection or predicate, one result per row; `style` is a constant that must be 'casual' or "
-    "'formal'. `sequence_table(count, step := 1)` is a deterministic table function that returns "
-    "`count` rows of `(n, squared)`; use it for demos, tests, and as a template for generators. "
-    "`fetch_items(base_url, page_size := 100)` reads every item from a paginated JSON REST API as "
-    "`(id, name, category, price)` rows, streaming one page per batch, retrying rate-limited "
-    "requests, and authenticating with a `focus_api` DuckDB secret or the `FOCUS_API_TOKEN` "
-    "environment variable. Scalars cannot take named arguments; table functions can."
+    "The `main` schema of the focus catalog. Table functions: `focus(path, source := 'auto', spec_version := "
+    "'1.2', billing_period := NULL, money_scale := 6, file_format := 'auto')` reads export files as FOCUS rows; "
+    "`to_focus(TABLE (SELECT ...), source := 'auto', spec_version := '1.2', money_scale := 6)` maps rows from any "
+    "DuckDB query; `focus_validate(path, source := 'auto', spec_version := '1.2')` returns one row per conformance "
+    "check (status pass/fail/skip, failing row count, sample value). Tables: `focus_columns`, `provider_map`, "
+    "`service_map`, `charge_type_map`. Scalars: `focus_service_category(provider, service)`, "
+    "`focus_service_subcategory(provider, service)`, `focus_charge_category(provider, charge_type)`, "
+    "`focus_map_column(source, column)`, `focus_validate_value(column, value)`, `focus_spec_version()`, "
+    "`focus_divide(numerator, denominator)` and `focus_effective_rate(cost, quantity)`. Provider arguments accept "
+    "'aws', 'azure' or 'gcp' (and 'AWS', 'Microsoft', 'Google Cloud'). Sum EffectiveCost for amortized spend and "
+    "BilledCost for invoice totals."
 )
 
 SCHEMA_DOC_MD = (
     "## main\n\n"
-    "The starter template's example functions, one per common worker pattern.\n\n"
-    "- **Scalars** answer one question per row and slot into a projection or predicate.\n"
-    "- **Table functions** return sets of rows, streamed to DuckDB in Arrow batches.\n"
-    "- **REST readers** page through an HTTP API and authenticate with a DuckDB secret."
+    "- **focus**, **to_focus**: billing data → FOCUS rows.\n"
+    "- **focus_validate**: FOCUS conformance report.\n"
+    "- **focus_columns**, **provider_map**, **service_map**, **charge_type_map**: reference tables.\n"
+    "- Scalars for service/charge classification and exact decimal division."
 )
 
 AGENT_TEST_TASKS = [
-    {"name": "formal_greeting", "prompt": "Using the focus worker, greet the name 'Grace' formally."},
     {
-        "name": "sum_of_squares",
-        "prompt": "Using the focus worker, what is the sum of the squared column for the first 10 rows "
-        "of the sequence with the default step?",
+        "name": "effective_cost_by_provider",
+        "prompt": "Using the focus worker and the FOCUS sample file at "
+        "https://raw.githubusercontent.com/Query-farm/vgi-focus-cost/main/test/fixtures/focus_sample/focus_sample_1_0.csv, "
+        "what is the total EffectiveCost per ProviderName?",
     },
     {
-        "name": "stepped_sequence",
-        "prompt": "List the n values of a 4-row sequence that steps by 5, in ascending order.",
+        "name": "ec2_category",
+        "prompt": "Which FOCUS service category and subcategory does the AWS product code 'AmazonRDS' map to?",
     },
     {
-        "name": "items_per_category",
-        "prompt": (
-            "The items API is running at https://vgi-starter-api.query-farm.services/v1. "
-            "How many items does it have in each category?"
-        ),
+        "name": "mandatory_columns_1_2",
+        "prompt": "How many columns does FOCUS version 1.2 define as Mandatory?",
+    },
+    {
+        "name": "exact_ratio",
+        "prompt": "Divide 10 by 3 exactly as a FOCUS money ratio, without DuckDB turning it into a DOUBLE.",
     },
 ]
 
 CATALOG_TAGS = {
-    "vgi.title": "VGI Focus Worker",
-    "vgi.subtitle": "Example DuckDB functions to rename and replace: a scalar, a table function and a REST API reader.",
+    "vgi.title": "FOCUS Cloud Cost Normalization",
+    "vgi.subtitle": "AWS, Azure and GCP billing exports as one FinOps FOCUS schema in DuckDB.",
     "vgi.doc_llm": CATALOG_DOC_LLM,
     "vgi.doc_md": CATALOG_DOC_MD,
     "vgi.source_url": SOURCE_URL,
     "vgi.icon_url": "https://query.farm/media-kit/products/vgi/vgi-logo.png",
-    "vgi.license": "0BSD",
+    "vgi.license": "MIT-0",
     "vgi.author": "Query.Farm",
-    "vgi.copyright": "Copyright 2026 Query.Farm LLC",
-    "vgi.keywords": keywords_array("vgi, duckdb, starter template, example worker, rest api, table function"),
+    "vgi.copyright": "Copyright 2026 Query Farm LLC - https://query.farm",
+    "vgi.keywords": keywords_array(
+        "focus, finops, cloud cost, aws cur, azure cost management, gcp billing export, multi-cloud, chargeback"
+    ),
     "vgi.support_contact": f"{SOURCE_URL}/issues",
     "vgi.support_policy_url": f"{SOURCE_URL}#support",
-    # Public analyst tasks for `vgi-lint simulate`; private graders live in vgi-agent-tests.yaml.
     "vgi.agent_test_tasks": json.dumps(AGENT_TEST_TASKS),
 }

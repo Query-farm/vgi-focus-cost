@@ -1,15 +1,7 @@
-"""Assemble the functions into a catalog and run the worker.
-
-To add a function: write it (see ``greet.py`` / ``sequence.py`` /
-``fetch_items.py``), then add the class to ``FUNCTIONS`` below.
-
-Run it:
+"""Assemble the focus catalog and run the worker.
 
     vgi-focus-worker                      # stdio: what DuckDB launches by default
     vgi-focus-worker --http --port 8000   # HTTP: for Docker / hosted deploys
-    vgi-focus-worker --help
-
-Attach it from DuckDB:
 
     ATTACH 'focus' (TYPE vgi, LOCATION '/abs/path/to/.venv/bin/vgi-focus-worker');
 """
@@ -22,10 +14,9 @@ from typing import Any
 from vgi import Worker
 from vgi.catalog import Catalog, Schema
 
-from .fetch_items import API_SECRET_TYPE, FetchItems
-from .greet import Greet, GreetWithStyle
+from .focus_fn import Focus
 from .meta import (
-    CATALOG_DOC_MD,
+    CATALOG_DESCRIPTION,
     CATALOG_NAME,
     CATALOG_TAGS,
     SCHEMA_CATEGORIES,
@@ -34,17 +25,16 @@ from .meta import (
     SOURCE_URL,
     keywords_array,
 )
-from .sequence import SequenceTable
+from .scalars import SCALARS
+from .tables import TABLE_FUNCTIONS, TABLES
+from .to_focus import ToFocus
+from .validate import FocusValidate
 
-FUNCTIONS: list[type[Any]] = [Greet, GreetWithStyle, SequenceTable, FetchItems]
+FUNCTIONS: list[type[Any]] = [Focus, ToFocus, FocusValidate, *SCALARS]
 
 
 def _stamp_example_queries(functions: list[type[Any]]) -> list[dict[str, str]]:
-    """Publish each function's examples as ``vgi.example_queries`` (with descriptions).
-
-    Overloads share one SQL name, so their examples are merged per name.
-    Returns every example, for the schema-level list.
-    """
+    """Publish each function's examples as ``vgi.example_queries`` (overloads merged per name)."""
     by_name: dict[str, list[dict[str, str]]] = {}
     for fn in functions:
         bucket = by_name.setdefault(fn.Meta.name, [])
@@ -65,28 +55,33 @@ class FocusWorker(Worker):
 
     catalog = Catalog(
         name=CATALOG_NAME,
-        comment=CATALOG_DOC_MD,
+        comment=CATALOG_DESCRIPTION,
         source_url=SOURCE_URL,
         tags=CATALOG_TAGS,
         schemas=[
             Schema(
                 path=["main"],
-                comment=SCHEMA_DOC_MD,
+                comment="FOCUS readers, mapping, validation, reference tables and exact-arithmetic scalars.",
                 functions=FUNCTIONS,
+                tables=TABLES,
                 tags={
-                    "vgi.title": "Focus Functions",
-                    "domain": "examples",
-                    "vgi.keywords": keywords_array("greeting, sequence, generator, rest api, pagination"),
+                    "vgi.title": "FOCUS Functions and Reference Tables",
+                    "domain": "finops",
+                    "vgi.keywords": keywords_array(
+                        "focus, finops, cloud billing, cost and usage, aws cur, azure cost export, gcp billing export"
+                    ),
                     "vgi.doc_llm": SCHEMA_DOC_LLM,
                     "vgi.doc_md": SCHEMA_DOC_MD,
                     "vgi.categories": json.dumps(SCHEMA_CATEGORIES),
                     "vgi.example_queries": json.dumps(_ALL_EXAMPLES),
+                    "vgi.source_url": SOURCE_URL,
                 },
             )
         ],
     )
 
-    secret_types = [API_SECRET_TYPE]
+
+_ = TABLE_FUNCTIONS  # backing scans are reached through TABLES
 
 
 def main() -> None:
