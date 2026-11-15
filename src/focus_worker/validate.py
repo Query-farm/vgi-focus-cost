@@ -324,18 +324,23 @@ class FocusValidate(TableFunctionGenerator[ValidateArgs, ValidateState]):
                 ),
                 doc_md=(
                     "## focus_validate(path, source := 'auto', spec_version := '1.2', file_format := 'auto')\n\n"
-                    "```sql\nSELECT check_name, column_name, failing_rows, sample_value\n"
-                    "FROM focus.main.focus_validate('focus_export.parquet') WHERE status = 'fail';\n```"
+                    "One row per conformance check, with the failing row count and a sample offending value. "
+                    "Filter on `status = 'fail'` for the problems."
                 ),
             ),
             "vgi.result_columns_schema": json.dumps(schema_columns_json(RESULT_SCHEMA)),
         }
         examples = [
             FunctionExample(
+                sql="SELECT check_name, column_name, status FROM focus.main.focus_validate("
+                "'sample://focus12', spec_version := '1.3') WHERE status <> 'pass' ORDER BY check_name, column_name",
+                description="Checks a native FOCUS 1.2 export does not pass as FOCUS 1.3",
+            ),
+            FunctionExample(
                 sql="SELECT check_name, column_name, failing_rows, sample_value FROM focus.main.focus_validate("
-                "'/data/focus/azure-focus-export.parquet', source := 'focus') WHERE status = 'fail' "
-                "ORDER BY failing_rows DESC",
-                description="Failing conformance checks of an Azure FOCUS export",
+                "'sample://gcp/gcp_billing_export_v1_01A2B3_202607.parquet') WHERE severity = 'error' "
+                "ORDER BY failing_rows DESC, check_name",
+                description="Error-level checks of the mapped GCP billing export sample",
             ),
         ]
 

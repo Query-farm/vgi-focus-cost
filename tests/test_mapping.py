@@ -22,7 +22,7 @@ import pytest
 from focus_worker.convert import pc
 from focus_worker.reader import ScanRequest, make_plan, new_cursor, next_batch
 
-from .conftest import FIXTURE_SOURCES, FIXTURES
+from .conftest import FIXTURE_SOURCES, FIXTURES, SAMPLES
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 KEY_COLUMNS = [
@@ -114,7 +114,7 @@ def _q(x: Any, scale: int = 6) -> Decimal:
 
 def test_aws_amortization_matches_decimal_reference() -> None:
     """EffectiveCost per AWS formula, recomputed row by row from the raw CUR with decimal."""
-    raw = pq.read_table(FIXTURES / "aws_cur2" / "acme-cur2" / "data" / "BILLING_PERIOD=2026-07").to_pylist()
+    raw = pq.read_table(SAMPLES / "aws_cur2" / "acme-cur2" / "data" / "BILLING_PERIOD=2026-07").to_pylist()
     expected_billed = sum(_q(r["line_item_unblended_cost"]) for r in raw)
     expected_effective = Decimal(0)
     for r in raw:
@@ -135,14 +135,14 @@ def test_aws_amortization_matches_decimal_reference() -> None:
             pass
         else:
             expected_effective += _q(r["line_item_unblended_cost"])
-    t = read(str(FIXTURES / "aws_cur2"), "aws_cur2")
+    t = read(str(SAMPLES / "aws_cur2"), "aws_cur2")
     july = t.filter(pc.equal(pc.month(t["BillingPeriodStart"]), 7))
     assert pc.sum(july["BilledCost"]).as_py() == expected_billed
     assert pc.sum(july["EffectiveCost"]).as_py() == expected_effective
 
 
 def test_aws_unused_commitment_rows() -> None:
-    t = read(str(FIXTURES / "aws_cur2"), "aws_cur2", version="1.2")
+    t = read(str(SAMPLES / "aws_cur2"), "aws_cur2", version="1.2")
     unused = t.filter(pc.equal(t["CommitmentDiscountStatus"], "Unused")).sort_by(
         [("x_ChargeType", "ascending"), ("BillingPeriodStart", "ascending")]
     )
@@ -158,7 +158,7 @@ def test_aws_unused_commitment_rows() -> None:
 
 
 def test_aws_classification_and_correction() -> None:
-    t = read(str(FIXTURES / "aws_cur2"), "aws_cur2")
+    t = read(str(SAMPLES / "aws_cur2"), "aws_cur2")
     by = {r["x_ChargeType"]: r for r in t.to_pylist()}
     assert by["Refund"]["ChargeClass"] == "Correction"  # June charge billed in July
     assert by["Usage"]["ChargeClass"] is None
@@ -177,7 +177,7 @@ def test_aws_classification_and_correction() -> None:
 
 
 def test_legacy_cur_headers() -> None:
-    t = read(str(FIXTURES / "aws_cur_legacy"), "auto")
+    t = read(str(SAMPLES / "aws_cur_legacy"), "auto")
     assert t.column("x_SourceFormat")[0].as_py() == "aws_cur2"
     usage = t.filter(pc.equal(t["ChargeCategory"], "Usage"))
     assert usage.num_rows == 10
@@ -189,8 +189,8 @@ def test_legacy_cur_headers() -> None:
 
 
 def test_sub_microdollar_costs_round_half_even_and_money_scale() -> None:
-    six = read(str(FIXTURES / "aws_cur2"), "aws_cur2")
-    ten = read(str(FIXTURES / "aws_cur2"), "aws_cur2", scale=10)
+    six = read(str(SAMPLES / "aws_cur2"), "aws_cur2")
+    ten = read(str(SAMPLES / "aws_cur2"), "aws_cur2", scale=10)
     lam6 = six.filter(pc.equal(six["x_ServiceCode"], "AWSLambda"))
     lam10 = ten.filter(pc.equal(ten["x_ServiceCode"], "AWSLambda"))
     assert set(lam6.column("BilledCost").to_pylist()) == {Decimal("0.000000")}  # 4.1667e-07 rounds to 0
@@ -199,8 +199,8 @@ def test_sub_microdollar_costs_round_half_even_and_money_scale() -> None:
 
 
 def test_azure_actual_vs_amortized() -> None:
-    actual = read(str(FIXTURES / "azure" / "contoso-actual-cost-202607.csv"), "azure")
-    amort = read(str(FIXTURES / "azure" / "contoso-amortized-cost-202607.parquet"), "azure_amortized")
+    actual = read(str(SAMPLES / "azure" / "contoso-actual-cost-202607.csv"), "azure")
+    amort = read(str(SAMPLES / "azure" / "contoso-amortized-cost-202607.parquet"), "azure_amortized")
 
     # Both describe the same month: what is not commitment-related agrees exactly.
     def ondemand(t: pa.Table) -> Decimal:
@@ -231,8 +231,8 @@ def test_azure_actual_vs_amortized() -> None:
 
 
 def test_gcp_credits_and_cud() -> None:
-    t = read(str(FIXTURES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet"), "gcp")
-    raw = pq.read_table(FIXTURES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet").to_pylist()
+    t = read(str(SAMPLES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet"), "gcp")
+    raw = pq.read_table(SAMPLES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet").to_pylist()
     expected = sum(_q(r["cost"]) + sum((_q(c["amount"]) for c in r["credits"] or []), Decimal(0)) for r in raw)
     assert pc.sum(t["BilledCost"]).as_py() == expected
     cud = t.filter(pc.equal(t["PricingCategory"], "Committed")).to_pylist()
@@ -251,24 +251,24 @@ def test_gcp_credits_and_cud() -> None:
 
 
 def test_gcp_json_matches_parquet_rows() -> None:
-    pq_t = read(str(FIXTURES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet"), "gcp")
-    js = read(str(FIXTURES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.jsonl"), "gcp")
+    pq_t = read(str(SAMPLES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.parquet"), "gcp")
+    js = read(str(SAMPLES / "gcp" / "gcp_billing_export_v1_01A2B3_202607.jsonl"), "gcp")
     cols = ["BilledCost", "ChargePeriodStart", "ServiceName", "SubAccountId", "CommitmentDiscountId", "Tags"]
     head = pq_t.slice(0, 20).select(cols).to_pylist()
     assert js.slice(0, 20).select(cols).to_pylist() == head
 
 
 def test_native_focus_passthrough_keeps_x_columns() -> None:
-    t = read(str(FIXTURES / "focus12"), "auto")
+    t = read(str(SAMPLES / "focus12"), "auto")
     assert "x_CostCategories" in t.schema.names and "x_Discounts" in t.schema.names
     row = t.to_pylist()[1]
     assert row["BilledCost"] == Decimal("0.000417")
     assert json.loads(row["x_CostCategories"]) == {"BusinessUnit": "Retail"}
     assert row["x_ServiceCode"] == "AmazonEC2"
-    v13 = read(str(FIXTURES / "focus12"), "focus", version="1.3")
+    v13 = read(str(SAMPLES / "focus12"), "focus", version="1.3")
     r13 = v13.to_pylist()[0]
     assert r13["ServiceProviderName"] == "AWS" and r13["HostProviderName"] == "AWS"
-    v14 = read(str(FIXTURES / "focus12"), "focus", version="1.4")
+    v14 = read(str(SAMPLES / "focus12"), "focus", version="1.4")
     assert "ProviderName" not in v14.schema.names
 
 

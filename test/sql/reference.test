@@ -101,11 +101,6 @@ SELECT focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.2');
 ----
 ServiceProviderName is not a FOCUS 1.2 column
 
-query T
-SELECT focus.main.focus_spec_version();
-----
-1.2
-
 # Exact division: DECIMAL / DECIMAL in DuckDB is DOUBLE, focus_divide stays DECIMAL.
 query TTT
 SELECT focus.main.focus_divide(10, 3), typeof(focus.main.focus_divide(1, 3)), focus.main.focus_divide(1, 0);

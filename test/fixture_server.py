@@ -1,4 +1,4 @@
-"""Serve test/fixtures over HTTP with Range support (for the https:// reader tests).
+"""Serve the sample exports and test/fixtures over HTTP with Range support (for the https:// reader tests).
 
 Prints ``PORT:<n>`` on stdout once listening, like the worker's ``--http`` mode.
 ``python -m http.server`` ignores Range headers, so it cannot stand in for S3/GCS
@@ -16,14 +16,24 @@ import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent / "fixtures"
+# The bundled synthetic samples, then the test-only fixtures (FOCUS sample data).
+ROOTS = [Path(__file__).resolve().parent.parent / "src" / "focus_worker" / "samples", Path(__file__).resolve().parent / "fixtures"]
 
 
 class RangeHandler(SimpleHTTPRequestHandler):
     """Static files with single-range ``Range: bytes=a-b`` support."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
-        super().__init__(*args, directory=str(ROOT), **kwargs)  # type: ignore[arg-type]
+        super().__init__(*args, directory=str(ROOTS[0]), **kwargs)  # type: ignore[arg-type]
+
+    def translate_path(self, path: str) -> str:
+        """Look the URL path up in each root in turn."""
+        for root in ROOTS:
+            self.directory = str(root)
+            candidate = super().translate_path(path)
+            if os.path.exists(candidate):
+                return candidate
+        return candidate
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         """Keep stdout clean; log to stderr only."""

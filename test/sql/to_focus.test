@@ -8,6 +8,8 @@ require-env FOCUS_WORKER
 
 require-env FOCUS_FIXTURES
 
+require-env FOCUS_SAMPLES
+
 statement ok
 ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
 
@@ -31,7 +33,7 @@ SET TimeZone = 'UTC';
 
 query III
 SELECT count(*), sum(BilledCost), sum(EffectiveCost)
-FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_FIXTURES}/aws_cur2/acme-cur2/data/*/*.parquet')));
+FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_SAMPLES}/aws_cur2/acme-cur2/data/*/*.parquet')));
 ----
 576	1843.212986	1123.512986
 
@@ -39,22 +41,22 @@ FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_FIXTURES}/aws_cur2/
 query I
 SELECT count(*) FROM (
   SELECT ChargePeriodStart, BilledCost, EffectiveCost, ResourceId, x_ChargeType
-  FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_FIXTURES}/aws_cur2/acme-cur2/data/*/*.parquet')))
+  FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_SAMPLES}/aws_cur2/acme-cur2/data/*/*.parquet')))
   EXCEPT ALL
-  SELECT ChargePeriodStart, BilledCost, EffectiveCost, ResourceId, x_ChargeType FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2'));
+  SELECT ChargePeriodStart, BilledCost, EffectiveCost, ResourceId, x_ChargeType FROM focus.main.focus('sample://aws_cur2'));
 ----
 0
 
 # DuckDB's CSV reader (all text) into the Azure mapping.
 query II
 SELECT count(*), sum(EffectiveCost)
-FROM focus.main.to_focus((SELECT * FROM read_csv('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv', all_varchar = true)));
+FROM focus.main.to_focus((SELECT * FROM read_csv('{FOCUS_SAMPLES}/azure/contoso-actual-cost-202607.csv', all_varchar = true)));
 ----
 160	288.197446
 
 query TI
 SELECT ServiceCategory, sum(EffectiveCost) FROM focus.main.to_focus(
-  (SELECT * FROM read_parquet('{FOCUS_FIXTURES}/azure/contoso-amortized-cost-202607.parquet')), source := 'azure_amortized')
+  (SELECT * FROM read_parquet('{FOCUS_SAMPLES}/azure/contoso-amortized-cost-202607.parquet')), source := 'azure_amortized')
 GROUP BY ALL ORDER BY ALL;
 ----
 Compute	233.223000
@@ -66,7 +68,7 @@ Web	156.240000
 
 # Nested GCP structs and credit arrays survive DuckDB's Parquet reader.
 query II
-SELECT count(*), sum(BilledCost) FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_FIXTURES}/gcp/*.parquet')));
+SELECT count(*), sum(BilledCost) FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_SAMPLES}/gcp/*.parquet')));
 ----
 127	673.770000
 
@@ -84,7 +86,7 @@ NULL	1
 
 # Empty input gives no rows.
 query I
-SELECT count(*) FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_FIXTURES}/gcp/*.parquet') WHERE false));
+SELECT count(*) FROM focus.main.to_focus((SELECT * FROM read_parquet('{FOCUS_SAMPLES}/gcp/*.parquet') WHERE false));
 ----
 0
 

@@ -27,11 +27,11 @@ not_null	ServiceCategory	error	1	NULL
 
 # Every mapped provider export passes every applicable error-level check.
 query TI
-SELECT 'aws', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/aws_cur2')
+SELECT 'aws', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('sample://aws_cur2')
 UNION ALL
-SELECT 'azure', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv')
+SELECT 'azure', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('sample://azure/contoso-actual-cost-202607.csv')
 UNION ALL
-SELECT 'gcp', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.parquet')
+SELECT 'gcp', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('sample://gcp/gcp_billing_export_v1_01A2B3_202607.parquet')
 ORDER BY 1;
 ----
 aws	0
@@ -39,7 +39,7 @@ azure	0
 gcp	0
 
 query TTI
-SELECT check_name, status, rows_checked FROM focus.main.focus_validate('{FOCUS_FIXTURES}/aws_cur2')
+SELECT check_name, status, rows_checked FROM focus.main.focus_validate('sample://aws_cur2')
 WHERE check_name IN ('charge_period_order', 'currency_code') AND column_name IN ('ChargePeriodEnd', 'BillingCurrency') ORDER BY 1;
 ----
 charge_period_order	pass	576

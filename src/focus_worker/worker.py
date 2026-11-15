@@ -65,7 +65,7 @@ class FocusWorker(Worker):
                 functions=FUNCTIONS,
                 tables=TABLES,
                 tags={
-                    "vgi.title": "FOCUS Functions and Reference Tables",
+                    "vgi.title": "FOCUS",
                     "domain": "finops",
                     "vgi.keywords": keywords_array(
                         "focus, finops, cloud billing, cost and usage, aws cur, azure cost export, gcp billing export"
@@ -74,7 +74,6 @@ class FocusWorker(Worker):
                     "vgi.doc_md": SCHEMA_DOC_MD,
                     "vgi.categories": json.dumps(SCHEMA_CATEGORIES),
                     "vgi.example_queries": json.dumps(_ALL_EXAMPLES),
-                    "vgi.source_url": SOURCE_URL,
                 },
             )
         ],

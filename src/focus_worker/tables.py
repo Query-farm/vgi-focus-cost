@@ -131,6 +131,7 @@ def _table_tags(
 ) -> dict[str, str]:
     return {
         **object_tags(title=title, category="reference", keywords=keywords, doc_llm=doc_llm, doc_md=doc_md),
+        "domain": "finops",
         "vgi.result_columns_schema": json.dumps(schema_columns_json(schema)),
         "vgi.executable_examples": json.dumps(examples),
         "vgi.example_queries": json.dumps([{"description": e["description"], "sql": e["sql"]} for e in examples]),
@@ -149,7 +150,7 @@ FOCUS_COLUMNS = Table(
         "One row per column per FOCUS version (1.0, 1.1, 1.2, 1.3, 1.4) of the Cost and Usage dataset, compiled from "
         "the FinOps Foundation specification: column_name, display_name, description, column_type, feature_level "
         "(Mandatory/Conditional/Recommended), allows_nulls, data_type, duckdb_type (what this worker emits), "
-        "value_format, allowed_values (VARCHAR[] or NULL) and introduced. Filter on spec_version. Use it to list "
+        "value_format, allowed_values (a `VARCHAR[]`, or NULL) and introduced. Filter on spec_version. Use it to list "
         "mandatory columns, look up allowed values (e.g. ChargeCategory) or diff versions.",
         "## focus_columns\n\nThe FOCUS spec as a table: one row per column per version (1.0-1.4).\n\n"
         "Column definitions © FOCUS contributors, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).",
@@ -438,7 +439,7 @@ CHARGE_TYPE_MAP = Table(
     column_comments=_comments(CHARGE_MAP_SCHEMA),
     constraints=_constraints("charge_type_map", ["source", "charge_type"]),
     tags=_table_tags(
-        "Charge Type Map",
+        "Provider Charge Classification",
         "charge category, line item type, charge type, cost type, savings plan, reservation",
         "One row per provider charge type: AWS line_item_line_item_type (Usage, DiscountedUsage, "
         "SavingsPlanCoveredUsage, RIFee, Tax, Credit ...), Azure ChargeType (Usage, Purchase, UnusedReservation ...) "

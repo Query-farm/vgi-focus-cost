@@ -8,6 +8,8 @@ require-env FOCUS_WORKER
 
 require-env FOCUS_FIXTURES
 
+require-env FOCUS_SAMPLES
+
 statement ok
 ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
 
@@ -34,21 +36,21 @@ SET TimeZone = 'UTC';
 # Two hive-partitioned months, 150-row row groups: many scan units and batches.
 query TIII
 SELECT x_SourceFormat, count(*), sum(BilledCost), sum(EffectiveCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') GROUP BY ALL;
+FROM focus.main.focus('sample://aws_cur2') GROUP BY ALL;
 ----
 aws_cur2	576	1843.212986	1123.512986
 
 # Money is exact DECIMAL(19,6), periods TIMESTAMPTZ, quantities and prices wider decimals, Tags a MAP.
 query TTTTT
 SELECT typeof(BilledCost), typeof(ListUnitPrice), typeof(PricingQuantity), typeof(ChargePeriodStart), typeof(Tags)
-FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') LIMIT 1;
+FROM focus.main.focus('sample://aws_cur2') LIMIT 1;
 ----
 DECIMAL(19,6)	DECIMAL(19,10)	DECIMAL(28,10)	TIMESTAMP WITH TIME ZONE	MAP(VARCHAR, VARCHAR)
 
 # Amortization: covered usage at the commitment's effective cost, plus unused commitment rows.
 query TTI
 SELECT CommitmentDiscountType, CommitmentDiscountStatus, sum(EffectiveCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-07')
+FROM focus.main.focus('sample://aws_cur2', billing_period := '2026-07')
 WHERE CommitmentDiscountId IS NOT NULL GROUP BY ALL ORDER BY ALL;
 ----
 Reserved Instance	Unused	3.750000
@@ -61,33 +63,33 @@ Savings Plan	NULL	0.000000
 # billing_period prunes the BILLING_PERIOD=2026-07 directory.
 query TII
 SELECT BillingPeriodStart::DATE, count(*), sum(BilledCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-08') GROUP BY ALL;
+FROM focus.main.focus('sample://aws_cur2', billing_period := '2026-08') GROUP BY ALL;
 ----
 2026-08-01	287	486.718210
 
 # Pushed-down filters give the same answer as filtering after the scan.
 query II
-SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2')
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('sample://aws_cur2')
 WHERE ChargePeriodStart >= TIMESTAMPTZ '2026-07-10 00:00:00+00' AND ChargePeriodStart < TIMESTAMPTZ '2026-07-12 00:00:00+00'
   AND SubAccountId = '777788889999';
 ----
 6	7.833600
 
 query II
-SELECT count(*), sum(BilledCost) FROM (SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') OFFSET 0)
+SELECT count(*), sum(BilledCost) FROM (SELECT * FROM focus.main.focus('sample://aws_cur2') OFFSET 0)
 WHERE ChargePeriodStart >= TIMESTAMPTZ '2026-07-10 00:00:00+00' AND ChargePeriodStart < TIMESTAMPTZ '2026-07-12 00:00:00+00'
   AND SubAccountId = '777788889999';
 ----
 6	7.833600
 
 query I
-SELECT count(*) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE SubAccountId IN ('777788889999', '444455556666');
+SELECT count(*) FROM focus.main.focus('sample://aws_cur2') WHERE SubAccountId IN ('777788889999', '444455556666');
 ----
 572
 
 # Tags: 'user_' prefixes removed; read a tag with Tags['team'].
 query TI
-SELECT Tags['team'] AS team, sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-07')
+SELECT Tags['team'] AS team, sum(BilledCost) FROM focus.main.focus('sample://aws_cur2', billing_period := '2026-07')
 WHERE Tags['team'] IS NOT NULL GROUP BY team ORDER BY team;
 ----
 checkout	0.000000
@@ -97,25 +99,32 @@ search	60.710400
 
 # A June refund billed in July is a correction.
 query TTI
-SELECT x_ChargeType, ChargeClass, BilledCost FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE ChargeClass IS NOT NULL;
+SELECT x_ChargeType, ChargeClass, BilledCost FROM focus.main.focus('sample://aws_cur2') WHERE ChargeClass IS NOT NULL;
 ----
 Refund	Correction	-3.000000
 
 # Sub-microdollar Lambda lines: 6 decimals rounds them away, money_scale := 10 keeps them.
 query TT
-SELECT sum(BilledCost)::VARCHAR, typeof(any_value(BilledCost)) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', money_scale := 10)
+SELECT sum(BilledCost)::VARCHAR, typeof(any_value(BilledCost)) FROM focus.main.focus('sample://aws_cur2', money_scale := 10)
 WHERE x_ServiceCode = 'AWSLambda';
 ----
 0.0000258354	DECIMAL(19,10)
 
 query T
-SELECT sum(BilledCost)::VARCHAR FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE x_ServiceCode = 'AWSLambda';
+SELECT sum(BilledCost)::VARCHAR FROM focus.main.focus('sample://aws_cur2') WHERE x_ServiceCode = 'AWSLambda';
 ----
 0.000000
 
+# x_SourceFile names the sample file each row came from.
+query TI
+SELECT x_SourceFile, count(*) FROM focus.main.focus('sample://aws_cur2') GROUP BY ALL ORDER BY ALL;
+----
+sample://aws_cur2/acme-cur2/data/BILLING_PERIOD=2026-07/acme-cur2-00001.snappy.parquet	289
+sample://aws_cur2/acme-cur2/data/BILLING_PERIOD=2026-08/acme-cur2-00001.snappy.parquet	287
+
 # Legacy CUR (lineItem/... headers, CSV.gz) is detected and renamed.
 query TII
-SELECT any_value(x_SourceFormat), count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur_legacy');
+SELECT any_value(x_SourceFormat), count(*), sum(BilledCost) FROM focus.main.focus('sample://aws_cur_legacy');
 ----
 aws_cur2	11	69.182000
 
@@ -123,7 +132,7 @@ aws_cur2	11	69.182000
 
 query TTII
 SELECT ChargeCategory, CommitmentDiscountStatus, sum(BilledCost), sum(EffectiveCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv') GROUP BY ALL ORDER BY ALL;
+FROM focus.main.focus('sample://azure/contoso-actual-cost-202607.csv') GROUP BY ALL ORDER BY ALL;
 ----
 Adjustment	NULL	-0.010000	-0.010000
 Purchase	NULL	203.392000	0.000000
@@ -132,7 +141,7 @@ Usage	NULL	288.207446	288.207446
 
 query TTII
 SELECT ChargeCategory, CommitmentDiscountStatus, sum(BilledCost), sum(EffectiveCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-amortized-cost-202607.parquet', source := 'azure_amortized')
+FROM focus.main.focus('sample://azure/contoso-amortized-cost-202607.parquet', source := 'azure_amortized')
 GROUP BY ALL ORDER BY ALL;
 ----
 Adjustment	NULL	-0.010000	-0.010000
@@ -141,7 +150,7 @@ Usage	Used	0.000000	245.892000
 Usage	NULL	288.207446	288.207446
 
 query TTT
-SELECT RegionId, ResourceType, Tags['team'] FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv')
+SELECT RegionId, ResourceType, Tags['team'] FROM focus.main.focus('sample://azure/contoso-actual-cost-202607.csv')
 WHERE ResourceName = 'web-01' LIMIT 1;
 ----
 eastus	microsoft.compute/virtualmachines	web
@@ -150,7 +159,7 @@ eastus	microsoft.compute/virtualmachines	web
 
 query TTII
 SELECT ChargeCategory, PricingCategory, count(*), sum(BilledCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.parquet') GROUP BY ALL ORDER BY ALL;
+FROM focus.main.focus('sample://gcp/gcp_billing_export_v1_01A2B3_202607.parquet') GROUP BY ALL ORDER BY ALL;
 ----
 Adjustment	NULL	1	-4.200000
 Tax	NULL	1	18.750000
@@ -158,14 +167,14 @@ Usage	Committed	31	145.303200
 Usage	Standard	94	513.916800
 
 query II
-SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.jsonl');
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('sample://gcp/gcp_billing_export_v1_01A2B3_202607.jsonl');
 ----
 23	371.943549
 
 # ---------------------------------------------------------------- native FOCUS
 
 query ITT
-SELECT count(*), any_value(x_CostCategories), any_value(x_Operation) FROM focus.main.focus('{FOCUS_FIXTURES}/focus12');
+SELECT count(*), any_value(x_CostCategories), any_value(x_Operation) FROM focus.main.focus('sample://focus12');
 ----
 10	{"BusinessUnit": "Retail"}	RunInstances
 
@@ -183,7 +192,7 @@ Oracle	60	5.009231
 # 'auto' detects the format per file, so one glob covers every cloud.
 query TTII
 SELECT x_SourceFormat, ProviderName, count(*), sum(BilledCost)
-FROM focus.main.focus('{FOCUS_FIXTURES}/**/*.parquet') GROUP BY ALL ORDER BY ALL;
+FROM focus.main.focus('{FOCUS_SAMPLES}/**/*.parquet') GROUP BY ALL ORDER BY ALL;
 ----
 aws_cur2	AWS	576	1843.212986
 azure	Microsoft	158	534.812446
@@ -193,19 +202,24 @@ gcp	Google Cloud	127	673.770000
 # spec_version picks the column set: 57 / 43 / 65 FOCUS columns plus 6 x_ columns.
 query III
 SELECT
-  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2'))),
-  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.0'))),
-  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.3')));
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('sample://aws_cur2'))),
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('sample://aws_cur2', spec_version := '1.0'))),
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('sample://aws_cur2', spec_version := '1.3')));
 ----
 63	49	71
 
 query TT
 SELECT any_value(ServiceProviderName), any_value(HostProviderName)
-FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.4') WHERE x_ServiceCode = 'AmazonEC2';
+FROM focus.main.focus('sample://aws_cur2', spec_version := '1.4') WHERE x_ServiceCode = 'AmazonEC2';
 ----
 AWS	AWS
 
 # --------------------------------------------------------------------- errors
+
+statement error
+SELECT * FROM focus.main.focus('sample://nope');
+----
+<REGEX>:.*unknown sample.*sample://aws_cur2.*
 
 statement error
 SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/does-not-exist.parquet');
@@ -213,17 +227,17 @@ SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/does-not-exist.parquet');
 <REGEX>:.*no such file or directory.*
 
 statement error
-SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := 'July');
+SELECT * FROM focus.main.focus('sample://aws_cur2', billing_period := 'July');
 ----
 <REGEX>:.*
 
 statement error
-SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', money_scale := 12);
+SELECT * FROM focus.main.focus('sample://aws_cur2', money_scale := 12);
 ----
 <REGEX>:.*
 
 statement error
-SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', source := 'oracle');
+SELECT * FROM focus.main.focus('sample://aws_cur2', source := 'oracle');
 ----
 <REGEX>:.*
 

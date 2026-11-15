@@ -1,16 +1,20 @@
-"""Generate the synthetic billing-export fixtures under test/fixtures/.
+"""Generate the synthetic billing-export samples under src/focus_worker/samples/.
+
+They ship inside the worker and are readable as sample://<name> (e.g.
+focus.main.focus('sample://aws_cur2')), so every documented example runs
+without a billing account.
 
 Every file is fabricated (account ids, resource ids, tags and amounts are made up)
-from the providers' published export schemas, so the corpus can be published MIT.
+from the providers' published export schemas, so the corpus can be published under the worker's 0BSD license.
 Exports really have 60-130 columns; each fixture carries the columns the mappers
 read plus the provider's other columns as realistic noise, so projection and
 "unknown column" handling are exercised.
 
-    uv run python scripts/make_fixtures.py     # deterministic; rewrites test/fixtures/
+    uv run python scripts/make_fixtures.py     # deterministic; rewrites src/focus_worker/samples/
 
-The FOCUS 1.0 sample (test/fixtures/focus_sample/) is NOT generated: it is the
-first 300 rows of the FinOps Foundation's FOCUS-Sample-Data, CC BY 4.0 (see the
-NOTICE file next to it).
+The FOCUS 1.0 sample (test/fixtures/focus_sample/) is NOT generated and does not
+ship: it is 300 rows of the FinOps Foundation's FOCUS-Sample-Data, CC BY 4.0 (see
+the NOTICE file next to it).
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-ROOT = Path(__file__).resolve().parent.parent / "test" / "fixtures"
+ROOT = Path(__file__).resolve().parent.parent / "src" / "focus_worker" / "samples"
 UTC = dt.UTC
 
 

@@ -1,6 +1,7 @@
 """Locate billing export files and stream their record batches.
 
-Paths may be a local file, a directory (read recursively), a glob (``*``, ``?``,
+Paths may be ``sample://<name>`` (synthetic exports bundled with the worker, so
+examples run anywhere), a local file, a directory (read recursively), a glob (``*``, ``?``,
 ``**``), an ``http(s)://`` URL (read with HTTP range requests, so a Parquet file
 is never downloaded whole), or an ``s3://`` URI / glob (pyarrow's S3 client,
 credentials from a DuckDB ``s3`` secret scoped to the path; ``gs://`` works the
@@ -293,6 +294,8 @@ def resolve(path: str, fmt: str = "auto", store: ObjectStoreConfig | None = None
         fs = (store or ObjectStoreConfig()).filesystem("gs" if scheme in ("gs", "gcs") else scheme)
         bare = path.split("://", 1)[1]
         return _expand(fs, bare, fmt, prefix=f"{scheme}://")
+    if scheme == "sample":
+        return _sample(path, fmt)
     if scheme == "file":
         path = path[len("file://") :]
     elif scheme:
@@ -320,6 +323,25 @@ def resolve(path: str, fmt: str = "auto", store: ObjectStoreConfig | None = None
     if not os.path.isfile(local):
         raise ScanError(f"no such file or directory: {path!r}")
     return FileSet(pafs.LocalFileSystem(), (local,), (local,), (file_format(local, fmt),))
+
+
+SAMPLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
+
+
+def sample_names() -> list[str]:
+    """Return the bundled synthetic sample datasets (``sample://<name>``)."""
+    return sorted(d for d in os.listdir(SAMPLES_DIR) if os.path.isdir(os.path.join(SAMPLES_DIR, d)))
+
+
+def _sample(path: str, fmt: str) -> FileSet:
+    """Resolve ``sample://<name>[/<file or glob>]`` to the bundled synthetic exports."""
+    rel = path[len("sample://") :].strip("/")
+    names = sample_names()
+    if not rel or rel.split("/", 1)[0] not in names:
+        raise ScanError(f"unknown sample {rel!r}; bundled samples: {', '.join('sample://' + n for n in names)}")
+    local = resolve(os.path.join(SAMPLES_DIR, rel), fmt)
+    uris = tuple("sample://" + os.path.relpath(f, SAMPLES_DIR).replace(os.sep, "/") for f in local.files)
+    return FileSet(local.filesystem, local.files, uris, local.formats)
 
 
 def _expand(fs: pafs.FileSystem, bare: str, fmt: str, *, prefix: str) -> FileSet:

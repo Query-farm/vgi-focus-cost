@@ -74,6 +74,7 @@ start_server() {
 # Fixtures: the export files under test/fixtures, read from disk and (for the
 # https:// reader) through a local static server that honours Range requests.
 export FOCUS_FIXTURES="$REPO/test/fixtures"
+export FOCUS_SAMPLES="$REPO/src/focus_worker/samples"
 start_server "$STAGE/fixtures.log" $PYTHON "$REPO/test/fixture_server.py"
 export FOCUS_FIXTURE_URL="http://127.0.0.1:$PORT"
 

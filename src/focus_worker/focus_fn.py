@@ -19,7 +19,7 @@ from vgi.table_function import (
 )
 
 from . import scan
-from .meta import focus_result_columns, object_tags
+from .meta import focus_dynamic_columns_md, object_tags
 from .reader import ScanCursor, ScanRequest, make_plan, new_cursor, next_batch
 from .sources import SOURCE_CHOICES
 from .spec import DEFAULT_MONEY_SCALE, DEFAULT_SPEC_VERSION, SPEC_VERSIONS
@@ -98,32 +98,41 @@ _DOC_LLM = (
     "Read cloud billing export files and return them as FOCUS (FinOps Open Cost and Usage Specification) rows, so one "
     "SQL query covers AWS, Azure and GCP. `path` (positional) is a file, directory, glob, https URL or s3:// URI of "
     "the export the user already has: AWS CUR 2.0 / Data Exports Parquet or CSV, Azure cost-details CSV/Parquet "
-    "(actual or amortized), a GCP BigQuery billing export dumped to Parquet/JSON, or any native FOCUS file. "
-    "`source := 'auto'` detects the format; pass 'aws_cur2', 'azure', 'azure_amortized', 'gcp' or 'focus' to force "
-    "it (use 'azure_amortized' for an Azure amortized export, since it cannot be told apart from the actual one). "
-    "`spec_version` picks the column set ('1.2' default). `billing_period := 'YYYY-MM'` restricts to one billing "
-    "month. Money columns (BilledCost, EffectiveCost, ListCost, ContractedCost) are exact DECIMAL(19,6); "
-    "ChargePeriodStart/End and BillingPeriodStart/End are TIMESTAMPTZ in UTC; Tags is MAP(VARCHAR, VARCHAR) "
-    "(read a tag with Tags['team']). x_ columns carry provider detail (x_ServiceCode, x_UsageType, x_ChargeType, "
-    "x_SourceFile). Use EffectiveCost for amortized spend and BilledCost for invoice totals. Filters on "
-    "ChargePeriodStart, BillingAccountId and SubAccountId are pushed into Parquet reads."
+    "(actual or amortized), a GCP BigQuery billing export dumped to Parquet/JSON, or any native FOCUS file; "
+    "`sample://aws_cur2`, `sample://azure`, `sample://gcp`, `sample://focus12` and `sample://aws_cur_legacy` are "
+    "bundled synthetic exports. `source := 'auto'` detects the format per file; pass 'aws_cur2', 'azure', "
+    "'azure_amortized', 'gcp' or 'focus' to force it (an Azure amortized export needs 'azure_amortized': its columns "
+    "match the actual-cost export). `spec_version` picks the column set ('1.2' default). `billing_period := "
+    "'YYYY-MM'` keeps one billing month. Money columns (BilledCost, EffectiveCost, ListCost, ContractedCost) are "
+    "exact `DECIMAL(19,6)` (`money_scale` raises the scale); ChargePeriodStart/End and BillingPeriodStart/End are "
+    "`TIMESTAMPTZ` in UTC; Tags is a `MAP(VARCHAR, VARCHAR)` read as Tags['team']. x_ columns carry provider "
+    "detail (x_ServiceCode, x_UsageType, x_ChargeType, x_SourceFile). Sum EffectiveCost for amortized spend and "
+    "BilledCost for invoice totals. Comparisons on ChargePeriodStart/End, BillingPeriodStart, BillingAccountId and "
+    "SubAccountId are pushed into Parquet reads, and only the raw columns the selected FOCUS columns need are read."
 )
 
 _DOC_MD = (
     "## focus(path, source := 'auto', spec_version := '1.2', billing_period := NULL, money_scale := 6, "
     "file_format := 'auto')\n\n"
-    "Billing export files → typed **FOCUS** rows. One query, every cloud:\n\n"
-    "```sql\nSELECT ProviderName, ServiceCategory, sum(EffectiveCost)\n"
-    "FROM focus.main.focus('exports/**/*.parquet')\nGROUP BY ALL;\n```\n\n"
+    "Billing export files → typed **FOCUS** rows. One query, every cloud.\n\n"
     "| source | reads |\n|---|---|\n"
     "| `aws_cur2` | AWS CUR 2.0 / Data Exports (Parquet, CSV), legacy CUR headers |\n"
     "| `azure` / `azure_amortized` | Azure cost-details exports (actual / amortized) |\n"
     "| `gcp` | BigQuery billing export dumped to Parquet / JSON / CSV |\n"
     "| `focus` | native FOCUS 1.0-1.4 files from any provider |\n\n"
-    "Files stream one row group at a time; projection and filters on ChargePeriodStart, BillingPeriodStart, "
-    "BillingAccountId and SubAccountId reach the Parquet reader. The mapping per source is in "
-    "`focus.main.provider_map`."
+    "Files stream one Parquet row group at a time. Only the raw columns behind the selected FOCUS columns are "
+    "read, and comparisons on ChargePeriodStart, BillingPeriodStart, BillingAccountId and SubAccountId prune row "
+    "groups. Each source's mapping is in `provider_map`."
 )
+
+
+EXPECTED_JULY = [
+    ["Adjustment", "-3.000000", "-3.000000"],
+    ["Credit", "-32.770000", "-32.770000"],
+    ["Purchase", "1018.252800", "0.000000"],
+    ["Tax", "12.340000", "12.340000"],
+    ["Usage", "361.671976", "582.074776"],
+]
 
 
 @init_single_worker
@@ -142,25 +151,38 @@ class Focus(TableFunctionGenerator[FocusArgs, ScanCursor]):
             **object_tags(
                 title="Billing Exports as FOCUS Rows",
                 category="ingest",
-                keywords="focus, finops, cloud cost, billing export, aws cur, cur 2.0, azure cost "
-                "export, gcp billing export, "
-                "multi-cloud, cost and usage",
+                keywords="focus, finops, cloud cost, billing export, aws cur, cur 2.0, azure cost export, "
+                "gcp billing export, multi-cloud, cost and usage",
                 doc_llm=_DOC_LLM,
                 doc_md=_DOC_MD,
             ),
-            "vgi.result_columns_schema": json.dumps(focus_result_columns()),
+            "vgi.result_dynamic_columns_md": focus_dynamic_columns_md(),
+            "vgi.executable_examples": json.dumps(
+                [
+                    {
+                        "description": "July 2026 AWS sample: billed vs amortized cost per charge category",
+                        "sql": "SELECT ChargeCategory, sum(BilledCost) AS billed, sum(EffectiveCost) AS effective "
+                        "FROM focus.main.focus('sample://aws_cur2', billing_period := '2026-07') "
+                        "GROUP BY ChargeCategory ORDER BY ChargeCategory",
+                        "expected_result": EXPECTED_JULY,
+                    },
+                ]
+            ),
         }
         examples = [
             FunctionExample(
-                sql="SELECT ProviderName, ServiceCategory, sum(EffectiveCost) AS effective_cost "
-                "FROM focus.main.focus('/data/billing/**/*.parquet') GROUP BY ALL ORDER BY effective_cost DESC",
-                description="Amortized spend by cloud and service category across every export under a folder",
+                sql="SELECT ProviderName, ServiceCategory, sum(EffectiveCost) AS effective_cost FROM ("
+                "SELECT * FROM focus.main.focus('sample://aws_cur2') UNION ALL "
+                "SELECT * FROM focus.main.focus('sample://azure/contoso-actual-cost-202607.csv') UNION ALL "
+                "SELECT * FROM focus.main.focus('sample://gcp/gcp_billing_export_v1_01A2B3_202607.parquet')) "
+                "GROUP BY ALL ORDER BY effective_cost DESC",
+                description="Amortized spend by cloud and service category across AWS, Azure and GCP exports",
             ),
             FunctionExample(
                 sql="SELECT Tags['team'] AS team, sum(BilledCost) AS billed FROM focus.main.focus("
-                "'s3://my-cur-bucket/cur2/data/', source := 'aws_cur2', billing_period := '2026-07') "
+                "'sample://aws_cur2', billing_period := '2026-07') WHERE Tags['team'] IS NOT NULL "
                 "GROUP BY team ORDER BY billed DESC",
-                description="July invoice cost by team tag, read straight from the CUR 2.0 bucket",
+                description="July invoice cost by team tag in the AWS CUR 2.0 sample",
             ),
         ]
 

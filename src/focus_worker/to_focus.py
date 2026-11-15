@@ -21,7 +21,7 @@ from vgi.table_function import BindParams, ProcessParams
 from vgi.table_in_out_function import OutputCollector, TableInOutGenerator
 
 from .focus_fn import SCALE_DOC, SPEC_DOC
-from .meta import focus_result_columns, object_tags
+from .meta import focus_dynamic_columns_md, object_tags
 from .sources import MAPPERS, SOURCE_CHOICES, MapOptions, map_batch, output_schema, resolve_source
 from .sources.focus import extra_fields
 from .spec import DEFAULT_MONEY_SCALE, DEFAULT_SPEC_VERSION, SPEC_VERSIONS
@@ -36,7 +36,7 @@ _SOURCE_DOC = (
 class ToFocusArgs:
     """Arguments for ``to_focus(TABLE (...), ...)``."""
 
-    data: Annotated[TableInput, Arg(0, doc="Raw billing rows: TABLE (SELECT * FROM read_parquet(...)).")]
+    data: Annotated[TableInput, Arg(0, doc="Raw billing rows from a subquery, with the export's own column names.")]
     source: Annotated[str, Arg("source", default="auto", doc=_SOURCE_DOC, choices=list(SOURCE_CHOICES))]
     spec_version: Annotated[
         str, Arg("spec_version", default=DEFAULT_SPEC_VERSION, doc=SPEC_DOC, choices=list(SPEC_VERSIONS))
@@ -50,6 +50,15 @@ def _schema_and_token(
     token = resolve_source(params.args.source, input_schema.names)
     extras = extra_fields(input_schema) if token == "focus" else []
     return token, output_schema(params.args.spec_version, params.args.money_scale, extras)
+
+
+EXAMPLE_SQL = (
+    "SELECT ChargeCategory, CommitmentDiscountStatus, BilledCost, EffectiveCost FROM focus.main.to_focus(("
+    "SELECT * FROM (VALUES ('Usage', 1.9584, NULL, NULL), "
+    "('SavingsPlanCoveredUsage', 3.9168, 2.7408, 'arn:aws:savingsplans::1:savingsplan/x')) "
+    "AS t(line_item_line_item_type, line_item_unblended_cost, savings_plan_savings_plan_effective_cost, "
+    "savings_plan_savings_plan_a_r_n))) ORDER BY BilledCost"
+)
 
 
 class ToFocus(TableInOutGenerator[ToFocusArgs]):
@@ -66,28 +75,35 @@ class ToFocus(TableInOutGenerator[ToFocusArgs]):
                 category="transform",
                 keywords="focus, normalize, cloud cost, billing rows, azure blob, bigquery, transform",
                 doc_llm=(
-                    "Table in-out function: pass raw billing rows that DuckDB has already read, as "
-                    "TABLE (SELECT * FROM read_parquet('az://...')) or TABLE (SELECT * FROM my_cur_table), and get "
-                    "FOCUS rows back with the same mapping, types and x_ columns as focus(path). `source := 'auto'` "
-                    "detects the format from the column names; force 'azure_amortized' for Azure amortized exports. "
-                    "Use it for storage this worker cannot read directly (Azure Blob, BigQuery via the bigquery "
-                    "extension, any database). The relation must keep the export's original column names."
+                    "Table in-out function: pass raw billing rows that DuckDB has already read as a subquery, for "
+                    "example read_parquet over Azure Blob storage with the azure extension, a BigQuery billing "
+                    "table read with the bigquery extension, or a database table of CUR rows, and get FOCUS rows "
+                    "back with the same mapping, types and x_ columns as focus(path). `source := 'auto'` detects "
+                    "the format from the column names; force 'azure_amortized' for Azure amortized exports. The "
+                    "subquery must keep the export's original column names. Rows stream through batch by batch."
                 ),
                 doc_md=(
-                    "## to_focus(TABLE (...), source := 'auto', spec_version := '1.2', money_scale := 6)\n\n"
-                    "```sql\nSELECT ServiceName, sum(EffectiveCost)\nFROM focus.main.to_focus(TABLE (\n"
-                    "  SELECT * FROM read_csv('az://billing/export/*.csv', all_varchar = true)))\nGROUP BY ALL;\n```"
+                    "## to_focus(subquery, source := 'auto', spec_version := '1.2', money_scale := 6)\n\n"
+                    "The `focus()` mapping for rows from any DuckDB query: storage this worker does not read "
+                    "directly (Azure Blob, BigQuery, a database) still lands in FOCUS."
                 ),
             ),
-            "vgi.result_columns_schema": json.dumps(focus_result_columns()),
+            "vgi.result_dynamic_columns_md": focus_dynamic_columns_md(),
+            "vgi.executable_examples": json.dumps(
+                [
+                    {
+                        "description": "Two CUR line items written inline: on-demand and Savings Plan covered usage",
+                        "sql": EXAMPLE_SQL,
+                        "expected_result": [
+                            ["Usage", None, "1.958400", "1.958400"],
+                            ["Usage", "Used", "3.916800", "2.740800"],
+                        ],
+                    }
+                ]
+            ),
         }
         examples = [
-            FunctionExample(
-                sql="SELECT ServiceCategory, sum(EffectiveCost) AS cost FROM focus.main.to_focus(TABLE ("
-                "SELECT * FROM read_parquet('az://costexports/contoso/*.parquet')), source := 'azure_amortized') "
-                "GROUP BY ServiceCategory ORDER BY cost DESC",
-                description="Amortized Azure spend by category from an export DuckDB reads over the azure extension",
-            ),
+            FunctionExample(sql=EXAMPLE_SQL, description="Map raw CUR 2.0 rows written inline to FOCUS"),
         ]
 
     @classmethod
