@@ -32,9 +32,15 @@ def nulls(n: int, type_: pa.DataType) -> pa.Array:
 
 
 def _blank_to_null(arr: pa.Array) -> pa.Array:
-    """Trim strings and turn empty strings into NULL."""
+    """Trim strings and turn empty strings and the literal text ``NULL`` into NULL.
+
+    Exports written by databases (the FOCUS sample data, BigQuery CSV dumps) spell
+    missing values ``NULL``; DuckDB's CSV reader keeps that text when a column is
+    read as VARCHAR.
+    """
     trimmed = pc.utf8_trim_whitespace(arr)
-    return pc.if_else(pc.equal(trimmed, ""), pa.scalar(None, pa.string()), trimmed)
+    blank = pc.or_(pc.equal(trimmed, ""), pc.equal(trimmed, "NULL"))
+    return pc.if_else(blank, pa.scalar(None, pa.string()), trimmed)
 
 
 def to_string(arr: pa.Array | pa.ChunkedArray | None, n: int) -> pa.Array:

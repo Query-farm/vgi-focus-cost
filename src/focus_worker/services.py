@@ -26,6 +26,7 @@ class Service(NamedTuple):
 _AWS = [
     ("AmazonEC2", "Amazon Elastic Compute Cloud", "Compute", "Virtual Machines"),
     ("AWSLambda", "AWS Lambda", "Compute", "Serverless Compute"),
+    ("ComputeSavingsPlans", "Savings Plans for AWS Compute usage", "Compute", "Other (Compute)"),
     ("AmazonECS", "Amazon Elastic Container Service", "Compute", "Containers"),
     ("AmazonEKS", "Amazon Elastic Kubernetes Service", "Compute", "Containers"),
     ("AmazonECR", "Amazon Elastic Container Registry", "Compute", "Containers"),

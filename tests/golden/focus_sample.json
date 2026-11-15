@@ -1,0 +1,612 @@
+{
+ "first_by_charge_type": {
+  "None|None|AI and Machine Learning": {
+   "BilledCost": "0.025000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-05T00:00:00+00:00",
+   "ChargePeriodStart": "2024-09-04T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "1.0000000000",
+   "ContractedCost": "0.025000",
+   "EffectiveCost": "0.025000",
+   "InvoiceIssuerName": "Microsoft",
+   "ListCost": "0.025000",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "1.0000000000",
+   "PricingUnit": "Hours",
+   "ProviderName": "Microsoft",
+   "PublisherName": "Microsoft",
+   "RegionId": "eastus2",
+   "ResourceId": "/subscriptions/64e355d7-997c-491d-b0c1-8414dccfcf42/resourcegroups/zfinops/providers/microsoft.machinelearningservices/workspaces/zfinopswkspace",
+   "ServiceCategory": "AI and Machine Learning",
+   "ServiceName": "Azure Machine Learning",
+   "ServiceSubcategory": null,
+   "SubAccountId": "/subscriptions/64e355d7-997c-491d-b0c1-8414dccfcf42",
+   "Tags": [
+    [
+     "env",
+     "prod"
+    ],
+    [
+     "org",
+     "trey"
+    ],
+    [
+     "CostCenter",
+     "1234"
+    ],
+    [
+     "ComputeType",
+     "Compute Instance"
+    ],
+    [
+     "AMLResourceType",
+     "Provisioner.Batch"
+    ],
+    [
+     "CostAllocationTest",
+     "Sameer"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Compute": {
+   "BilledCost": "0.000013",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-20T07:00:00+00:00",
+   "ChargePeriodStart": "2024-09-20T06:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "0.0013307668",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000013",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "0.0013307668",
+   "PricingUnit": "GB",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-east-1",
+   "ResourceId": "i-0l24b947942bl301a",
+   "ServiceCategory": "Compute",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": null,
+   "SubAccountId": "11353890204",
+   "Tags": [
+    [
+     "application",
+     "BrightPathMatrix"
+    ],
+    [
+     "environment",
+     "dev"
+    ],
+    [
+     "business_unit",
+     "PeoriaData"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Databases": {
+   "BilledCost": "0.000000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-09T14:00:00+00:00",
+   "ChargePeriodStart": "2024-09-09T13:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "2.123E-7",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000000",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "2.123E-7",
+   "PricingUnit": "GB",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-west-2",
+   "ResourceId": "arn:ats:rls:us-test-2:961082193871:lf:terraborc-20180918211143281500000001",
+   "ServiceCategory": "Databases",
+   "ServiceName": "Amazon Relational Database Service",
+   "ServiceSubcategory": null,
+   "SubAccountId": "69918885631",
+   "Tags": [
+    [
+     "application",
+     "ZoomBridgeInsight"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "BangkokAI"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Identity": {
+   "BilledCost": "0.000024",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-24T01:00:00+00:00",
+   "ChargePeriodStart": "2024-09-24T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "8.0000000000",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000024",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "8.0000000000",
+   "PricingUnit": "Requests",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-west-2",
+   "ResourceId": "arn:ats:fcs:us-test-2:740815793202:fel/0627ba92-3539-4e64-f33l-64ll86647592",
+   "ServiceCategory": "Identity",
+   "ServiceName": "AWS Key Management Service",
+   "ServiceSubcategory": null,
+   "SubAccountId": "85742851457",
+   "Tags": [
+    [
+     "application",
+     "TrueVaultSmart"
+    ],
+    [
+     "environment",
+     "dev"
+    ],
+    [
+     "business_unit",
+     "BaghdadProcurement"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Integration": {
+   "BilledCost": "0.000144",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-04T02:00:00+00:00",
+   "ChargePeriodStart": "2024-09-04T01:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "360.0000000000",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000144",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "360.0000000000",
+   "PricingUnit": "Requests",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-west-2",
+   "ResourceId": "arn:ats:sqs:us-test-2:115386644665:ses_founles_queue",
+   "ServiceCategory": "Integration",
+   "ServiceName": "Amazon Simple Queue Service",
+   "ServiceSubcategory": null,
+   "SubAccountId": "66362635077",
+   "Tags": [
+    [
+     "application",
+     "BrightSyncExpress"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "LexingtonIT"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Management and Governance": {
+   "BilledCost": "0.002230",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-01T04:00:00+00:00",
+   "ChargePeriodStart": "2024-09-01T03:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "223.0000000000",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.002230",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "223.0000000000",
+   "PricingUnit": "Requests",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "eu-central-1",
+   "ResourceId": null,
+   "ServiceCategory": "Management and Governance",
+   "ServiceName": "AmazonCloudWatch",
+   "ServiceSubcategory": null,
+   "SubAccountId": "83450778704",
+   "Tags": null,
+   "x_ChargeType": null
+  },
+  "None|None|Networking": {
+   "BilledCost": "0.000000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-18T10:00:00+00:00",
+   "ChargePeriodStart": "2024-09-18T09:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "0.0000013560",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services Canada, Inc.",
+   "ListCost": "0.000000",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "0.0000013560",
+   "PricingUnit": "GB",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services Canada, Inc.",
+   "RegionId": "us-east-2",
+   "ResourceId": "arn:ats:emastilmoalfamanling:us-east-2:941737603089:moalfamanler/net/a6l4l92f324al440188l2ll5l6ll89af/e1691beleaa75ffb",
+   "ServiceCategory": "Networking",
+   "ServiceName": "Elastic Load Balancing",
+   "ServiceSubcategory": null,
+   "SubAccountId": "28975285017",
+   "Tags": null,
+   "x_ChargeType": null
+  },
+  "None|None|None": {
+   "BilledCost": "0.192000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-based",
+   "ChargePeriodEnd": "2024-09-13T23:00:00+00:00",
+   "ChargePeriodStart": "2024-09-13T22:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "128.0000000000",
+   "ContractedCost": null,
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Oracle",
+   "ListCost": "0.192000",
+   "PricingCategory": null,
+   "PricingQuantity": "128.0000000000",
+   "PricingUnit": "GB Hours",
+   "ProviderName": "Oracle",
+   "PublisherName": "Oracle",
+   "RegionId": null,
+   "ResourceId": "ocid6.postgresqldbsystem.oc6.us-sanjose-6.amaaaaaa9foqhxiavnpiyfrver7gpvxiiiitjzwqwe2au2ycuuwcpgumodca",
+   "ServiceCategory": null,
+   "ServiceName": "ODSP",
+   "ServiceSubcategory": null,
+   "SubAccountId": "ocid6.tenancy.oc6..aaaaaaaa2fs7w19bi9iupcjqv8zayogd78eziinl2hu7rkdvmuhsavhbmkma",
+   "Tags": [
+    [
+     "application",
+     "DynamicScopeEdge"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "ChandlerProcurement"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Other": {
+   "BilledCost": "0.000001",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-13T13:00:00+00:00",
+   "ChargePeriodStart": "2024-09-13T12:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "0.0000098841",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000001",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "0.0000098841",
+   "PricingUnit": "GB",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-west-2",
+   "ResourceId": "arn:ats:els:us-test-2:365499461711:tasf/faferlSfimmEmi-prol1/ea7b29994139434698e9a40845lba173",
+   "ServiceCategory": "Other",
+   "ServiceName": "Amazon Elastic Container Service",
+   "ServiceSubcategory": null,
+   "SubAccountId": "18938484842",
+   "Tags": null,
+   "x_ChargeType": null
+  },
+  "None|None|Others": {
+   "BilledCost": "0.021300",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-based",
+   "ChargePeriodEnd": "2024-09-24T00:00:00+00:00",
+   "ChargePeriodStart": "2024-09-23T23:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "1.0000000000",
+   "ContractedCost": null,
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Oracle",
+   "ListCost": null,
+   "PricingCategory": null,
+   "PricingQuantity": "1.0000000000",
+   "PricingUnit": "LB Hours",
+   "ProviderName": "Oracle",
+   "PublisherName": "Oracle",
+   "RegionId": null,
+   "ResourceId": "ocid6.loadbalancer.oc6.us-sanjose-6.aaaaaaaaimyeoescteanx89ow1hmyheqlt7t9xlubhlcl6mq6fuiqldyc2xa",
+   "ServiceCategory": "Others",
+   "ServiceName": "ORALB",
+   "ServiceSubcategory": null,
+   "SubAccountId": "ocid6.tenancy.oc6..aaaaaaaa2fs7w19bi9iupcjqv8zayogd78eziinl2hu7rkdvmuhsavhbmkma",
+   "Tags": [
+    [
+     "application",
+     "SafeControlDirect"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "PontianakAI"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Security": {
+   "BilledCost": "0.008160",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-13T00:00:00+00:00",
+   "ChargePeriodStart": "2024-09-12T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "24.0000000000",
+   "ContractedCost": "0.008160",
+   "EffectiveCost": "0.008160",
+   "InvoiceIssuerName": "Microsoft",
+   "ListCost": "0.008160",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "24.0000000000",
+   "PricingUnit": "Units/Hour",
+   "ProviderName": "Microsoft",
+   "PublisherName": "Microsoft",
+   "RegionId": "westus",
+   "ResourceId": "/subscriptions/ed570627-0265-4620-bb42-bae06bcfa914/resourcegroups/ftk-micflan-templatedeployment/providers/microsoft.keyvault/vaults/finopshub-ggecwj5veqe5s",
+   "ServiceCategory": "Security",
+   "ServiceName": "Key Vault",
+   "ServiceSubcategory": null,
+   "SubAccountId": "/subscriptions/ed570627-0265-4620-bb42-bae06bcfa914",
+   "Tags": [
+    [
+     "env",
+     "prod"
+    ],
+    [
+     "org",
+     "trey"
+    ],
+    [
+     "CostCenter",
+     "1234"
+    ],
+    [
+     "cm-resource-parent",
+     "/subscriptions/ed570627-0265-4620-bb42-bae06bcfa914/resourceGroups/ftk-micflan-TemplateDeployment/providers/Microsoft.Cloud/hubs/finopshub"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Storage": {
+   "BilledCost": "0.000000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-09T06:00:00+00:00",
+   "ChargePeriodStart": "2024-09-09T05:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "1.0000000000",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.000000",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "1.0000000000",
+   "PricingUnit": "Hours",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "us-west-2",
+   "ResourceId": "i-01287f21l1al9041l",
+   "ServiceCategory": "Storage",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": null,
+   "SubAccountId": "69918885631",
+   "Tags": [
+    [
+     "application",
+     "EvolveVaultCentral"
+    ],
+    [
+     "environment",
+     "dev"
+    ],
+    [
+     "business_unit",
+     "ChicagoIT"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|None|Web": {
+   "BilledCost": "1.266000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-based",
+   "ChargePeriodEnd": "2024-09-07T00:00:00+00:00",
+   "ChargePeriodStart": "2024-09-06T23:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "844.0000000000",
+   "ContractedCost": null,
+   "EffectiveCost": "1.000000",
+   "InvoiceIssuerName": "Oracle",
+   "ListCost": "1.266000",
+   "PricingCategory": null,
+   "PricingQuantity": "844.0000000000",
+   "PricingUnit": "GB Hours",
+   "ProviderName": "Oracle",
+   "PublisherName": "Oracle",
+   "RegionId": null,
+   "ResourceId": "ocid6.opensearchcluster.oc6.us-sanjose-6.amaaaaaa9foqhxiakpumcd2jsaflepelmwlvwcbzbbjyuqt98jpr99ubhbjq",
+   "ServiceCategory": "Web",
+   "ServiceName": "OPENSEARCH",
+   "ServiceSubcategory": null,
+   "SubAccountId": "ocid6.tenancy.oc6..aaaaaaaa2fs7w19bi9iupcjqv8zayogd78eziinl2hu7rkdvmuhsavhbmkma",
+   "Tags": [
+    [
+     "application",
+     "DynamicScopeEdge"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "ChandlerProcurement"
+    ]
+   ],
+   "x_ChargeType": null
+  },
+  "None|Used|Compute": {
+   "BilledCost": "0.000000",
+   "BillingPeriodStart": "2024-09-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2024-09-06T22:00:00+00:00",
+   "ChargePeriodStart": "2024-09-06T21:00:00+00:00",
+   "CommitmentDiscountCategory": "Spend",
+   "CommitmentDiscountId": "arn:aws:savingsplans::365499461711:savingsplan/37985e61-4fcb-4023-9dd7-e524c80342a2",
+   "CommitmentDiscountStatus": "Used",
+   "CommitmentDiscountType": "Savings Plan",
+   "ConsumedQuantity": "1.0000000000",
+   "ContractedCost": "0.000000",
+   "EffectiveCost": "0.000000",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "0.404000",
+   "PricingCategory": "Committed",
+   "PricingQuantity": "1.0000000000",
+   "PricingUnit": "Hours",
+   "ProviderName": "AWS",
+   "PublisherName": "Amazon Web Services, Inc.",
+   "RegionId": "ap-south-1",
+   "ResourceId": "i-0e5f49091b21fe69e",
+   "ServiceCategory": "Compute",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": null,
+   "SubAccountId": "18938484842",
+   "Tags": [
+    [
+     "application",
+     "OmniVaultEssentials"
+    ],
+    [
+     "environment",
+     "prod"
+    ],
+    [
+     "business_unit",
+     "RaleighProcurement"
+    ]
+   ],
+   "x_ChargeType": null
+  }
+ },
+ "rows": 300,
+ "totals": [
+  {
+   "BilledCost_count": 22,
+   "BilledCost_sum": "3.043038",
+   "ChargeCategory": "Adjustment",
+   "EffectiveCost_sum": "4.000000"
+  },
+  {
+   "BilledCost_count": 278,
+   "BilledCost_sum": "27.046906",
+   "ChargeCategory": "Usage",
+   "EffectiveCost_sum": "30.672863"
+  }
+ ]
+}

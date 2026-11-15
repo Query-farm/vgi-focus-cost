@@ -58,6 +58,8 @@ class Mapper:
             rule = self.rule_index.get(col)
             if rule is not None:
                 wanted.update(s.lower().partition(".")[0] for s in rule.sources)
+            elif col.lower().startswith("x_"):
+                wanted.add(col.lower())  # a provider extension column carried through by name
         out = []
         for name in available:
             key = self.canonical_name(name).lower()

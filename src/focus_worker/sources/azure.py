@@ -10,8 +10,8 @@ Azure publishes billed and amortized cost as two different exports:
 
 * ``azure`` (actual cost): ``BilledCost`` is the row cost. Commitment purchases
   are not spread, so ``EffectiveCost`` equals ``BilledCost`` except that a
-  reservation/savings-plan purchase gets ``EffectiveCost = 0`` and is not double
-  counted. Use the amortized export when you need amortized ``EffectiveCost``.
+  reservation/savings-plan purchase (or refund) gets ``EffectiveCost = 0`` and is
+  not double counted. Use the amortized export when you need amortized ``EffectiveCost``.
 * ``azure_amortized``: ``EffectiveCost`` is the row cost; rows covered by a
   commitment (and ``UnusedReservation``/``UnusedSavingsPlan`` rows) are not
   billed again, so their ``BilledCost`` is 0.
@@ -95,7 +95,9 @@ _SHARED_RULES: tuple[Rule, ...] = (
     Rule("ResourceId", ("ResourceId", "InstanceId"), "ResourceId (or InstanceId)"),
     Rule("ResourceName", ("ResourceName", "ResourceId", "InstanceId"), "ResourceName, else the last segment of ResourceId"),
     Rule("ResourceType", ("ResourceId", "InstanceId"), "'<namespace>/<type>' parsed from the ResourceId"),
-    Rule("ServiceName", ("MeterCategory", "ConsumedService"), "service_map name for MeterCategory, else MeterCategory"),
+    Rule("ServiceName", ("MeterCategory", "ConsumedService", "ProductName", "ServiceFamily"),
+         "service_map name for MeterCategory, else MeterCategory, ConsumedService, ProductName, ServiceFamily, 'Microsoft'",
+         "Rows with no meter (rounding adjustments) fall back so ServiceName is never NULL."),
     Rule("ServiceCategory", ("MeterCategory", "ServiceFamily"), "service_map on MeterCategory, else on ServiceFamily, else 'Other'"),
     Rule("ServiceSubcategory", ("MeterCategory", "ServiceFamily"), "service_map on MeterCategory, else 'Other (<category>)'"),
     Rule("SkuId", ("ProductId",), "ProductId"),
@@ -114,14 +116,14 @@ _SHARED_RULES: tuple[Rule, ...] = (
 ACTUAL_RULES = (
     Rule("BilledCost", COST, "CostInBillingCurrency (actual-cost export)"),
     Rule("EffectiveCost", (*COST, "ChargeType", "PricingModel"),
-         "the row cost; 0 for reservation/savings-plan Purchase rows (not amortized in an actual-cost export)"),
+         "the row cost; 0 for reservation/savings-plan Purchase and Refund rows (not amortized in an actual-cost export)"),
     *_SHARED_RULES,
 )
 AMORTIZED_RULES = (
     Rule("BilledCost", (*COST, "ChargeType", "PricingModel"),
          "the row cost, but 0 for commitment-covered Usage and Unused* rows (billed through the purchase)"),
     Rule("EffectiveCost", (*COST, "ChargeType", "PricingModel"),
-         "CostInBillingCurrency (amortized-cost export); 0 for commitment Purchase rows"),
+         "CostInBillingCurrency (amortized-cost export); 0 for commitment Purchase and Refund rows"),
     *_SHARED_RULES,
 )
 
@@ -165,7 +167,7 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
     zero = zero_money(n, s)
     commitment = isin(model, COMMITMENT_MODELS)
     unused = isin(ctype, UNUSED_TYPES)
-    purchase = pc.fill_null(pc.equal(ctype, "Purchase"), False)
+    purchase = isin(ctype, ("Purchase", "Refund"))
     usage = pc.fill_null(pc.equal(ctype, "Usage"), False)
     commit_purchase = pc.and_(purchase, commitment)
     if amortized:
@@ -256,7 +258,8 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
         "ResourceId": rid,
         "ResourceName": pc.coalesce(src.string("ResourceName"), map_values(rid, _last_segment, pa.string())),
         "ResourceType": map_values(rid, _resource_type, pa.string()),
-        "ServiceName": pc.coalesce(map_values(meter_cat, _svc_name, pa.string()), src.string("ConsumedService")),
+        "ServiceName": pc.coalesce(map_values(meter_cat, _svc_name, pa.string()), src.string("ConsumedService"),
+                                   src.string("ProductName"), family, src.const("Microsoft")),
         "ServiceCategory": pc.coalesce(category_by_meter, map_values(family, _cat, pa.string(), skip_null=False)),
         "ServiceSubcategory": pc.coalesce(sub_by_meter, map_values(service_key, _subcat, pa.string(), skip_null=False)),
         "SkuId": src.string("ProductId"),

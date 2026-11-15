@@ -1,148 +1,238 @@
 # name: test/sql/focus.test
-# description: SQL-level tests for the focus worker, run through DuckDB by ci/run-integration.sh
+# description: focus() over every fixture export: totals, types, versions, pushdown, errors
 # group: [focus]
-# managed-by: vgi-starters (edit upstream in shared/, then run tools/render.py)
 
 require vgi
 
 require-env FOCUS_WORKER
 
-require-env FOCUS_MOCK_API
-
-require-env FOCUS_MOCK_API_AUTH
+require-env FOCUS_FIXTURES
 
 statement ok
 ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
 
-# ---------------------------------------------------------------- greet (scalar)
+# The standalone runner links no extensions: icu for TIMESTAMPTZ casts in UTC,
+# parquet for DuckDB's own reader in to_focus().
+statement ok
+INSTALL icu;
 
-query T
-SELECT focus.main.greet('Ada');
+statement ok
+LOAD icu;
+
+statement ok
+INSTALL parquet;
+
+statement ok
+LOAD parquet;
+
+statement ok
+SET TimeZone = 'UTC';
+
+
+# ------------------------------------------------------------------ AWS CUR 2.0
+
+# Two hive-partitioned months, 150-row row groups: many scan units and batches.
+query TIII
+SELECT x_SourceFormat, count(*), sum(BilledCost), sum(EffectiveCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') GROUP BY ALL;
 ----
-Hi, Ada!
+aws_cur2	576	1843.212986	1123.512986
 
-query T
-SELECT focus.main.greet('Ada', 'formal');
+# Money is exact DECIMAL(19,6), periods TIMESTAMPTZ, quantities and prices wider decimals, Tags a MAP.
+query TTTTT
+SELECT typeof(BilledCost), typeof(ListUnitPrice), typeof(PricingQuantity), typeof(ChargePeriodStart), typeof(Tags)
+FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') LIMIT 1;
 ----
-Good day, Ada.
+DECIMAL(19,6)	DECIMAL(19,10)	DECIMAL(28,10)	TIMESTAMP WITH TIME ZONE	MAP(VARCHAR, VARCHAR)
 
-# NULL in, NULL out.
-query T
-SELECT focus.main.greet(NULL);
+# Amortization: covered usage at the commitment's effective cost, plus unused commitment rows.
+query TTI
+SELECT CommitmentDiscountType, CommitmentDiscountStatus, sum(EffectiveCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-07')
+WHERE CommitmentDiscountId IS NOT NULL GROUP BY ALL ORDER BY ALL;
 ----
-NULL
+Reserved Instance	Unused	3.750000
+Reserved Instance	Used	127.372800
+Reserved Instance	NULL	0.000000
+Savings Plan	Unused	4.315200
+Savings Plan	Used	84.964800
+Savings Plan	NULL	0.000000
 
-# Works over a whole column, one result per row.
-query T
-SELECT focus.main.greet(name) FROM (VALUES ('Ada'), ('Grace'), (NULL)) AS t(name) ORDER BY ALL NULLS LAST;
+# billing_period prunes the BILLING_PERIOD=2026-07 directory.
+query TII
+SELECT BillingPeriodStart::DATE, count(*), sum(BilledCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-08') GROUP BY ALL;
 ----
-Hi, Ada!
-Hi, Grace!
-NULL
+2026-08-01	287	486.718210
 
-# `style` is constrained to 'casual' | 'formal' and checked when the query is bound.
-# (No expected message: each SDK words constraint errors its own way.)
-statement error
-SELECT focus.main.greet('Ada', 'loud');
+# Pushed-down filters give the same answer as filtering after the scan.
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2')
+WHERE ChargePeriodStart >= TIMESTAMPTZ '2026-07-10 00:00:00+00' AND ChargePeriodStart < TIMESTAMPTZ '2026-07-12 00:00:00+00'
+  AND SubAccountId = '777788889999';
 ----
-<REGEX>:.*
-
-# ------------------------------------------------------ sequence_table (table fn)
+6	7.833600
 
 query II
-SELECT n, squared FROM focus.main.sequence_table(4) ORDER BY n;
+SELECT count(*), sum(BilledCost) FROM (SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') OFFSET 0)
+WHERE ChargePeriodStart >= TIMESTAMPTZ '2026-07-10 00:00:00+00' AND ChargePeriodStart < TIMESTAMPTZ '2026-07-12 00:00:00+00'
+  AND SubAccountId = '777788889999';
 ----
-0	0
-1	1
-2	4
-3	9
-
-# Named argument with a default.
-query I
-SELECT n FROM focus.main.sequence_table(3, step := 5) ORDER BY n;
-----
-0
-5
-10
-
-# Larger than one batch: the cursor must carry across process calls.
-query II
-SELECT count(*), max(n) FROM focus.main.sequence_table(25000);
-----
-25000	24999
+6	7.833600
 
 query I
-SELECT count(*) FROM focus.main.sequence_table(0);
+SELECT count(*) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE SubAccountId IN ('777788889999', '444455556666');
 ----
-0
+572
 
-# count is constrained to [0, 1000000].
-statement error
-SELECT * FROM focus.main.sequence_table(-1);
-----
-<REGEX>:.*
-
-# Named arguments are constrained too: step >= 1.
-statement error
-SELECT * FROM focus.main.sequence_table(3, step := 0);
-----
-<REGEX>:.*
-
-# ------------------------------------------------- fetch_items (REST table fn)
-
-query IIT
-SELECT count(*), sum(id), min(name) FROM focus.main.fetch_items('{FOCUS_MOCK_API}', page_size := 4);
-----
-25	325	item-01
-
+# Tags: 'user_' prefixes removed; read a tag with Tags['team'].
 query TI
-SELECT category, count(*) FROM focus.main.fetch_items('{FOCUS_MOCK_API}') GROUP BY category ORDER BY category;
+SELECT Tags['team'] AS team, sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := '2026-07')
+WHERE Tags['team'] IS NOT NULL GROUP BY team ORDER BY team;
 ----
-hardware	8
-service	8
-software	9
+checkout	0.000000
+data	28.889085
+payments	60.710400
+search	60.710400
 
-# The harness runs FOCUS_MOCK_API with MOCK_API_FLAKY=1: every page answers
-# 429 + Retry-After once, so every query above also exercised the retry path.
+# A June refund billed in July is a correction.
+query TTI
+SELECT x_ChargeType, ChargeClass, BilledCost FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE ChargeClass IS NOT NULL;
+----
+Refund	Correction	-3.000000
 
-# FOCUS_MOCK_API_AUTH requires a bearer token ('test-token'). Every language's
-# fetch_items must put the HTTP status code in its error message.
+# Sub-microdollar Lambda lines: 6 decimals rounds them away, money_scale := 10 keeps them.
+query TT
+SELECT sum(BilledCost)::VARCHAR, typeof(any_value(BilledCost)) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', money_scale := 10)
+WHERE x_ServiceCode = 'AWSLambda';
+----
+0.0000258354	DECIMAL(19,10)
+
+query T
+SELECT sum(BilledCost)::VARCHAR FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2') WHERE x_ServiceCode = 'AWSLambda';
+----
+0.000000
+
+# Legacy CUR (lineItem/... headers, CSV.gz) is detected and renamed.
+query TII
+SELECT any_value(x_SourceFormat), count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur_legacy');
+----
+aws_cur2	11	69.182000
+
+# ----------------------------------------------------------------------- Azure
+
+query TTII
+SELECT ChargeCategory, CommitmentDiscountStatus, sum(BilledCost), sum(EffectiveCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv') GROUP BY ALL ORDER BY ALL;
+----
+Adjustment	NULL	-0.010000	-0.010000
+Purchase	NULL	203.392000	0.000000
+Usage	Used	0.000000	0.000000
+Usage	NULL	288.207446	288.207446
+
+query TTII
+SELECT ChargeCategory, CommitmentDiscountStatus, sum(BilledCost), sum(EffectiveCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-amortized-cost-202607.parquet', source := 'azure_amortized')
+GROUP BY ALL ORDER BY ALL;
+----
+Adjustment	NULL	-0.010000	-0.010000
+Usage	Unused	0.000000	0.723000
+Usage	Used	0.000000	245.892000
+Usage	NULL	288.207446	288.207446
+
+query TTT
+SELECT RegionId, ResourceType, Tags['team'] FROM focus.main.focus('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv')
+WHERE ResourceName = 'web-01' LIMIT 1;
+----
+eastus	microsoft.compute/virtualmachines	web
+
+# ------------------------------------------------------------------------- GCP
+
+query TTII
+SELECT ChargeCategory, PricingCategory, count(*), sum(BilledCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.parquet') GROUP BY ALL ORDER BY ALL;
+----
+Adjustment	NULL	1	-4.200000
+Tax	NULL	1	18.750000
+Usage	Committed	31	145.303200
+Usage	Standard	94	513.916800
+
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.jsonl');
+----
+23	371.943549
+
+# ---------------------------------------------------------------- native FOCUS
+
+query ITT
+SELECT count(*), any_value(x_CostCategories), any_value(x_Operation) FROM focus.main.focus('{FOCUS_FIXTURES}/focus12');
+----
+10	{"BusinessUnit": "Retail"}	RunInstances
+
+# The FinOps Foundation's FOCUS 1.0 sample (CC BY 4.0) read as FOCUS 1.2.
+query TII
+SELECT ProviderName, count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURES}/focus_sample/focus_sample_1_0.csv')
+GROUP BY ALL ORDER BY ALL;
+----
+AWS	120	1.307099
+Microsoft	120	23.773614
+Oracle	60	5.009231
+
+# ------------------------------------------------------ mixed folders, versions
+
+# 'auto' detects the format per file, so one glob covers every cloud.
+query TTII
+SELECT x_SourceFormat, ProviderName, count(*), sum(BilledCost)
+FROM focus.main.focus('{FOCUS_FIXTURES}/**/*.parquet') GROUP BY ALL ORDER BY ALL;
+----
+aws_cur2	AWS	576	1843.212986
+azure	Microsoft	158	534.812446
+focus	AWS	10	9.794085
+gcp	Google Cloud	127	673.770000
+
+# spec_version picks the column set: 57 / 43 / 65 FOCUS columns plus 6 x_ columns.
+query III
+SELECT
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2'))),
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.0'))),
+  (SELECT count(*) FROM (DESCRIBE SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.3')));
+----
+63	49	71
+
+query TT
+SELECT any_value(ServiceProviderName), any_value(HostProviderName)
+FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', spec_version := '1.4') WHERE x_ServiceCode = 'AmazonEC2';
+----
+AWS	AWS
+
+# --------------------------------------------------------------------- errors
+
 statement error
-SELECT count(*) FROM focus.main.fetch_items('{FOCUS_MOCK_API_AUTH}');
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/does-not-exist.parquet');
 ----
-401
+<REGEX>:.*no such file or directory.*
 
-statement ok
-CREATE SECRET focus_api_test (TYPE focus_api, TOKEN 'test-token');
-
-query I
-SELECT count(*) FROM focus.main.fetch_items('{FOCUS_MOCK_API_AUTH}', page_size := 25);
-----
-25
-
-# Several pages: the token must survive between batches (over HTTP each batch is a
-# separate request, so a token kept only in memory is lost after page 1).
-query I
-SELECT count(*) FROM focus.main.fetch_items('{FOCUS_MOCK_API_AUTH}', page_size := 7);
-----
-25
-
-statement ok
-DROP SECRET focus_api_test;
-
-# base_url must be http(s).
 statement error
-SELECT * FROM focus.main.fetch_items('ftp://example.com');
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', billing_period := 'July');
 ----
 <REGEX>:.*
 
-# page_size is a named argument constrained to [1, 1000].
 statement error
-SELECT * FROM focus.main.fetch_items('{FOCUS_MOCK_API}', page_size := 0);
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', money_scale := 12);
 ----
 <REGEX>:.*
 
 statement error
-SELECT * FROM focus.main.fetch_items('{FOCUS_MOCK_API}', page_size := 5000);
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/aws_cur2', source := 'oracle');
 ----
 <REGEX>:.*
+
+statement error
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURES}/focus_sample/NOTICE.md');
+----
+<REGEX>:.*cannot tell the format.*
+
+statement error
+SELECT * FROM focus.main.focus('az://container/export.csv');
+----
+<REGEX>:.*to_focus.*

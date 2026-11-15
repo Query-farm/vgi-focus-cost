@@ -1,0 +1,43 @@
+# name: test/sql/http.test
+# description: focus() over http(s) URLs, read with Range requests from a local static server
+# group: [focus]
+
+require vgi
+
+require-env FOCUS_WORKER
+
+require-env FOCUS_FIXTURE_URL
+
+statement ok
+ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
+
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURE_URL}/gcp/gcp_billing_export_v1_01A2B3_202607.parquet');
+----
+127	673.770000
+
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURE_URL}/azure/contoso-actual-cost-202607.csv');
+----
+160	491.589446
+
+query II
+SELECT count(*), sum(BilledCost) FROM focus.main.focus('{FOCUS_FIXTURE_URL}/aws_cur_legacy/acme-legacy-00001.csv.gz');
+----
+11	69.182000
+
+# Hive partitions in the URL path still prune with billing_period.
+query I
+SELECT count(*) FROM focus.main.focus('{FOCUS_FIXTURE_URL}/aws_cur2/acme-cur2/data/BILLING_PERIOD=2026-07/acme-cur2-00001.snappy.parquet', billing_period := '2026-08');
+----
+0
+
+statement error
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURE_URL}/missing.parquet');
+----
+<REGEX>:.*HTTP 404.*
+
+statement error
+SELECT * FROM focus.main.focus('{FOCUS_FIXTURE_URL}/gcp/*.parquet');
+----
+<REGEX>:.*globs are not supported over HTTP.*

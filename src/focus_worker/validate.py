@@ -194,7 +194,7 @@ def _report(plan: Plan, counts: dict[str, _Counter]) -> pa.RecordBatch:
             spec = next(c for c in cols if c.column_name == col)
             status = "pass" if ok else ("fail" if spec.feature_level == "Mandatory" else "not_applicable")
             rows.append({"check_name": check, "column_name": col, "severity": severity, "status": status,
-                         "rows_checked": total_rows, "failing_rows": 0 if ok else total_rows,
+                         "rows_checked": total_rows, "failing_rows": total_rows if status == "fail" else 0,
                          "sample_value": None, "detail": detail + ("" if ok else "; the source does not provide it")})
             continue
         if check in ("custom_column_prefix", "column_name_case"):

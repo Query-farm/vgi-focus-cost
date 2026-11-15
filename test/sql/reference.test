@@ -1,0 +1,131 @@
+# name: test/sql/reference.test
+# description: reference tables and scalar functions
+# group: [focus]
+
+require vgi
+
+require-env FOCUS_WORKER
+
+statement ok
+ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
+
+query TI
+SELECT spec_version, count(*) FROM focus.main.focus_columns GROUP BY ALL ORDER BY ALL;
+----
+1.0	43
+1.1	50
+1.2	57
+1.3	65
+1.4	65
+
+query I
+SELECT count(*) FROM focus.main.focus_columns WHERE spec_version = '1.2' AND feature_level = 'Mandatory';
+----
+21
+
+query T
+SELECT unnest(allowed_values) AS v FROM focus.main.focus_columns
+WHERE spec_version = '1.2' AND column_name = 'ChargeCategory' ORDER BY v;
+----
+Adjustment
+Credit
+Purchase
+Tax
+Usage
+
+query TT
+SELECT data_type, duckdb_type FROM focus.main.focus_columns WHERE spec_version = '1.2' AND column_name = 'BilledCost';
+----
+Decimal	DECIMAL(19,6)
+
+query TI
+SELECT source, count(*) FROM focus.main.provider_map GROUP BY ALL ORDER BY ALL;
+----
+aws_cur2	51
+azure	53
+azure_amortized	53
+focus	68
+gcp	49
+
+# Every mandatory FOCUS 1.2 column has a rule in every provider mapping.
+query I
+SELECT count(*) FROM focus.main.focus_columns c, (VALUES ('aws_cur2'), ('azure'), ('azure_amortized'), ('gcp')) s(source)
+WHERE c.spec_version = '1.2' AND c.feature_level = 'Mandatory' AND c.column_name NOT IN ('ChargeClass')
+  AND NOT EXISTS (SELECT 1 FROM focus.main.provider_map m WHERE m.source = s.source AND m.focus_column = c.column_name);
+----
+0
+
+# service_map only uses ServiceCategory / ServiceSubcategory values the spec allows.
+query I
+SELECT count(*) FROM focus.main.service_map
+WHERE service_category NOT IN (SELECT unnest(allowed_values) FROM focus.main.focus_columns WHERE spec_version = '1.2' AND column_name = 'ServiceCategory')
+   OR service_subcategory NOT IN (SELECT unnest(allowed_values) FROM focus.main.focus_columns WHERE spec_version = '1.2' AND column_name = 'ServiceSubcategory');
+----
+0
+
+query TT
+SELECT charge_type, charge_category FROM focus.main.charge_type_map WHERE source = 'azure' AND charge_type LIKE 'Unused%' ORDER BY 1;
+----
+UnusedReservation	Usage
+UnusedSavingsPlan	Usage
+
+query TTTT
+SELECT focus.main.focus_service_category('aws', 'AmazonRDS'), focus.main.focus_service_category('Microsoft', 'virtual machines'),
+       focus.main.focus_service_subcategory('gcp', 'BigQuery'), focus.main.focus_service_category('aws', 'Nope');
+----
+Databases	Compute	Data Warehouses	Other
+
+query T
+SELECT focus.main.focus_service_category(NULL, 'AmazonEC2');
+----
+NULL
+
+query TTT
+SELECT focus.main.focus_charge_category('aws', 'RIFee'), focus.main.focus_charge_category('azure', 'UnusedSavingsPlan'),
+       focus.main.focus_charge_category('gcp', 'tax');
+----
+Purchase	Usage	Tax
+
+query TT
+SELECT focus.main.focus_map_column('aws_cur2', 'lineItem/UnblendedCost'), focus.main.focus_map_column('gcp', 'credits');
+----
+BilledCost, ContractedCost, EffectiveCost, ListCost	BilledCost, CommitmentDiscountCategory, CommitmentDiscountId, CommitmentDiscountName, CommitmentDiscountStatus, CommitmentDiscountType, EffectiveCost, PricingCategory
+
+query TT
+SELECT focus.main.focus_validate_value('ChargeCategory', 'Usage'), focus.main.focus_validate_value('BillingCurrency', 'usd');
+----
+NULL	'usd' is not an ISO 4217 currency code
+
+query T
+SELECT focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.2');
+----
+ServiceProviderName is not a FOCUS 1.2 column
+
+query T
+SELECT focus.main.focus_spec_version();
+----
+1.2
+
+# Exact division: DECIMAL / DECIMAL in DuckDB is DOUBLE, focus_divide stays DECIMAL.
+query TTT
+SELECT focus.main.focus_divide(10, 3), typeof(focus.main.focus_divide(1, 3)), focus.main.focus_divide(1, 0);
+----
+3.3333333333	DECIMAL(19,10)	NULL
+
+query T
+SELECT focus.main.focus_effective_rate(2.7408, 24);
+----
+0.1142000000
+
+# Half-even rounding at the tenth decimal.
+query T
+SELECT focus.main.focus_divide(1, 4000000000);
+----
+0.0000000002
+
+# A ratio times a DECIMAL(19,6) money value is exact and does not overflow.
+query TT
+SELECT typeof(focus.main.focus_divide(1, 3) * 1234567890123.123456::DECIMAL(19,6)),
+       (focus.main.focus_divide(1, 4) * 1234567890123.123456::DECIMAL(19,6))::VARCHAR;
+----
+DECIMAL(38,16)	308641972530.7808640000000000

@@ -7,7 +7,7 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from typing import Annotated, Any
 
 import pyarrow as pa
-from vgi.arguments import Param, Returns
+from vgi.arguments import ConstParam, Param, Returns
 from vgi.metadata import FunctionExample
 from vgi.scalar_function import ScalarFunction
 
@@ -352,16 +352,10 @@ class ValidateValueVersion(ScalarFunction):
         cls,
         column_name: Annotated[pa.StringArray, Param(doc="FOCUS column name.")],
         value: Annotated[pa.StringArray, Param(doc="The value to check, as text.")],
-        spec_version: Annotated[pa.StringArray, Param(doc="FOCUS version: '1.0' to '1.4'.", choices=list(SPEC_VERSIONS))],
+        spec_version: Annotated[str, ConstParam("FOCUS version: '1.0' to '1.4'.", choices=list(SPEC_VERSIONS))],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Validate each value against the given version."""
-        out = []
-        for c, v, ver in zip(column_name.to_pylist(), value.to_pylist(), spec_version.to_pylist(), strict=True):
-            if ver not in SPEC_VERSIONS:
-                out.append(None if ver is None else f"unsupported FOCUS version {ver!r}")
-            else:
-                out.append(validate_value(c, v, ver))
-        return pa.array(out, pa.string())  # type: ignore[return-value]
+        return _pairwise(column_name, value, lambda c, v: validate_value(c, v, spec_version), pa.string())  # type: ignore[return-value]
 
 
 class SpecVersion(ScalarFunction):

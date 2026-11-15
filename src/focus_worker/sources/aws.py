@@ -87,11 +87,11 @@ RULES: tuple[Rule, ...] = (
     Rule("CommitmentDiscountStatus", (_TYPE,),
          "'Used' for DiscountedUsage/SavingsPlanCoveredUsage, 'Unused' on the synthetic unused-commitment row"),
     Rule("PricingCategory", (_TYPE, "pricing_term", "line_item_usage_type"),
-         "'Committed' for commitment-covered usage, 'Dynamic' for Spot, 'Standard' for other usage and purchases"),
-    Rule("PricingQuantity", ("line_item_usage_amount",), "line_item_usage_amount (NULL for Tax and Credit)"),
-    Rule("PricingUnit", ("pricing_unit",), "pricing_unit (NULL for Tax and Credit)"),
-    Rule("ConsumedQuantity", ("line_item_usage_amount",), "line_item_usage_amount for Usage rows that are not Unused"),
-    Rule("ConsumedUnit", ("pricing_unit",), "pricing_unit for Usage rows that are not Unused"),
+         "'Committed' for commitment-covered usage and SavingsPlanNegation, 'Dynamic' for Spot, 'Standard' for other usage and purchases"),
+    Rule("PricingQuantity", ("line_item_usage_amount",), "line_item_usage_amount (NULL for Tax, Credit and SavingsPlanNegation)"),
+    Rule("PricingUnit", ("pricing_unit",), "pricing_unit (NULL for Tax, Credit and SavingsPlanNegation)"),
+    Rule("ConsumedQuantity", ("line_item_usage_amount",), "line_item_usage_amount for Usage rows that are not Unused or SavingsPlanNegation"),
+    Rule("ConsumedUnit", ("pricing_unit",), "pricing_unit for Usage rows that are not Unused or SavingsPlanNegation"),
     Rule("PricingCurrency", ("pricing_currency", "line_item_currency_code"), "pricing_currency, else line_item_currency_code"),
     Rule("InvoiceId", ("bill_invoice_id",), "bill_invoice_id"),
     Rule("InvoiceIssuerName", ("bill_invoicing_entity",), "bill_invoicing_entity, else 'AWS'"),
@@ -175,16 +175,18 @@ def map_aws(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
     cd_type = when(pc.is_valid(sp_arn), src.const("Savings Plan"), when(pc.is_valid(ri_arn), src.const("Reserved Instance"), src.null(pa.string())))
     cd_cat = when(pc.is_valid(sp_arn), src.const("Spend"), when(pc.is_valid(ri_arn), src.const("Usage"), src.null(pa.string())))
     used = isin(lit, COMMITMENT_USED)
+    negation = pc.fill_null(pc.equal(lit, "SavingsPlanNegation"), False)
     cd_status = when(used, src.const("Used"), src.null(pa.string()))
     term = src.string("pricing_term")
     usage_type = src.string("line_item_usage_type")
     spot = pc.or_(pc.fill_null(pc.equal(term, "Spot"), False),
                   pc.fill_null(pc.match_substring(usage_type, "SpotUsage"), False))
     usage_or_purchase = isin(category, ("Usage", "Purchase"))
-    pricing_cat = when(used, src.const("Committed"),
+    pricing_cat = when(pc.or_(used, negation), src.const("Committed"),
                        when(spot, src.const("Dynamic"),
                             when(usage_or_purchase, src.const("Standard"), src.null(pa.string()))))
-    no_qty = isin(category, ("Tax", "Credit"))
+    # Negation rows offset covered usage; their quantity would double count it.
+    no_qty = pc.or_(isin(category, ("Tax", "Credit")), negation)
     qty = src.quantity("line_item_usage_amount")
     unit = src.string("pricing_unit")
     code = src.string("line_item_product_code")
@@ -225,8 +227,8 @@ def map_aws(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
         "PricingCategory": pricing_cat,
         "PricingQuantity": when(no_qty, src.null(qty.type), qty),
         "PricingUnit": when(no_qty, src.null(pa.string()), unit),
-        "ConsumedQuantity": qty,
-        "ConsumedUnit": unit,
+        "ConsumedQuantity": when(no_qty, src.null(qty.type), qty),
+        "ConsumedUnit": when(no_qty, src.null(pa.string()), unit),
         "PricingCurrency": pc.coalesce(src.string("pricing_currency"), currency),
         "InvoiceId": src.string("bill_invoice_id"),
         "InvoiceIssuerName": pc.coalesce(src.string("bill_invoicing_entity"), src.const("AWS")),

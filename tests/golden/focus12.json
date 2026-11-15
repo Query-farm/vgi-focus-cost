@@ -1,0 +1,53 @@
+{
+ "first_by_charge_type": {
+  "None|None|Compute": {
+   "BilledCost": "1.958400",
+   "BillingPeriodStart": "2026-07-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2026-07-02T00:00:00+00:00",
+   "ChargePeriodStart": "2026-07-01T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "24.0000000000",
+   "ContractedCost": "1.958400",
+   "EffectiveCost": "1.958400",
+   "InvoiceIssuerName": "Amazon Web Services, Inc.",
+   "ListCost": "1.958400",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "24.0000000000",
+   "PricingUnit": "Hours",
+   "ProviderName": "AWS",
+   "PublisherName": "AWS",
+   "RegionId": "us-east-1",
+   "ResourceId": "arn:aws:ec2:us-east-1:777788889999:instance/i-0f0000",
+   "ServiceCategory": "Compute",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": "Virtual Machines",
+   "SubAccountId": "777788889999",
+   "Tags": [
+    [
+     "team",
+     "search"
+    ],
+    [
+     "env",
+     "dev"
+    ]
+   ],
+   "x_ChargeType": null
+  }
+ },
+ "rows": 10,
+ "totals": [
+  {
+   "BilledCost_count": 10,
+   "BilledCost_sum": "9.794085",
+   "ChargeCategory": "Usage",
+   "EffectiveCost_sum": "9.794085"
+  }
+ ]
+}

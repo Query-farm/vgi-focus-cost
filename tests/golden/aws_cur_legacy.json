@@ -1,0 +1,90 @@
+{
+ "first_by_charge_type": {
+  "Tax|None|Compute": {
+   "BilledCost": "1.070000",
+   "BillingPeriodStart": "2026-05-01T00:00:00+00:00",
+   "ChargeCategory": "Tax",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2026-06-01T00:00:00+00:00",
+   "ChargePeriodStart": "2026-05-01T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": null,
+   "ContractedCost": "1.070000",
+   "EffectiveCost": "1.070000",
+   "InvoiceIssuerName": "AWS",
+   "ListCost": "1.070000",
+   "PricingCategory": null,
+   "PricingQuantity": null,
+   "PricingUnit": null,
+   "ProviderName": "AWS",
+   "PublisherName": "AWS",
+   "RegionId": null,
+   "ResourceId": null,
+   "ServiceCategory": "Compute",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": "Virtual Machines",
+   "SubAccountId": "777788889999",
+   "Tags": null,
+   "x_ChargeType": "Tax"
+  },
+  "Usage|None|Compute": {
+   "BilledCost": "0.998400",
+   "BillingPeriodStart": "2026-05-01T00:00:00+00:00",
+   "ChargeCategory": "Usage",
+   "ChargeClass": null,
+   "ChargeFrequency": "Usage-Based",
+   "ChargePeriodEnd": "2026-05-02T00:00:00+00:00",
+   "ChargePeriodStart": "2026-05-01T00:00:00+00:00",
+   "CommitmentDiscountCategory": null,
+   "CommitmentDiscountId": null,
+   "CommitmentDiscountStatus": null,
+   "CommitmentDiscountType": null,
+   "ConsumedQuantity": "24.0000000000",
+   "ContractedCost": "0.998400",
+   "EffectiveCost": "0.998400",
+   "InvoiceIssuerName": "AWS",
+   "ListCost": "0.998400",
+   "PricingCategory": "Standard",
+   "PricingQuantity": "24.0000000000",
+   "PricingUnit": "Hrs",
+   "ProviderName": "AWS",
+   "PublisherName": "AWS",
+   "RegionId": "us-east-1",
+   "ResourceId": "i-legacysearch",
+   "ServiceCategory": "Compute",
+   "ServiceName": "Amazon Elastic Compute Cloud",
+   "ServiceSubcategory": "Virtual Machines",
+   "SubAccountId": "777788889999",
+   "Tags": [
+    [
+     "team",
+     "search"
+    ],
+    [
+     "env",
+     "dev"
+    ]
+   ],
+   "x_ChargeType": "Usage"
+  }
+ },
+ "rows": 11,
+ "totals": [
+  {
+   "BilledCost_count": 1,
+   "BilledCost_sum": "1.070000",
+   "ChargeCategory": "Tax",
+   "EffectiveCost_sum": "1.070000"
+  },
+  {
+   "BilledCost_count": 10,
+   "BilledCost_sum": "68.112000",
+   "ChargeCategory": "Usage",
+   "EffectiveCost_sum": "68.112000"
+  }
+ ]
+}

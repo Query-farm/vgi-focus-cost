@@ -1,0 +1,55 @@
+# name: test/sql/validate.test
+# description: focus_validate() conformance reports
+# group: [focus]
+
+require vgi
+
+require-env FOCUS_WORKER
+
+require-env FOCUS_FIXTURES
+
+statement ok
+ATTACH 'focus' (TYPE vgi, LOCATION '{FOCUS_WORKER}');
+
+# The FOCUS 1.0 sample checked as FOCUS 1.2: real-world conformance problems.
+query TTTII
+SELECT check_name, column_name, severity, failing_rows, sample_value
+FROM focus.main.focus_validate('{FOCUS_FIXTURES}/focus_sample/focus_sample_1_0.csv') WHERE status = 'fail' ORDER BY ALL;
+----
+allowed_values	ChargeFrequency	error	60	Usage-based
+allowed_values	ServiceCategory	error	1	Others
+consumed_quantity_usage_only	ConsumedQuantity	warning	22	Adjustment
+custom_column_prefix	NULL	warning	1	Id
+not_null	ContractedCost	error	60	NULL
+not_null	ListCost	error	1	NULL
+not_null	PublisherName	error	1	NULL
+not_null	ServiceCategory	error	1	NULL
+
+# Every mapped provider export passes every applicable error-level check.
+query TI
+SELECT 'aws', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/aws_cur2')
+UNION ALL
+SELECT 'azure', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/azure/contoso-actual-cost-202607.csv')
+UNION ALL
+SELECT 'gcp', count(*) FILTER (WHERE status = 'fail' AND severity = 'error') FROM focus.main.focus_validate('{FOCUS_FIXTURES}/gcp/gcp_billing_export_v1_01A2B3_202607.parquet')
+ORDER BY 1;
+----
+aws	0
+azure	0
+gcp	0
+
+query TTI
+SELECT check_name, status, rows_checked FROM focus.main.focus_validate('{FOCUS_FIXTURES}/aws_cur2')
+WHERE check_name IN ('charge_period_order', 'currency_code') AND column_name IN ('ChargePeriodEnd', 'BillingCurrency') ORDER BY 1;
+----
+charge_period_order	pass	576
+currency_code	pass	576
+
+# Against FOCUS 1.3, ServiceProviderName and HostProviderName are bridged from the 1.0 PublisherName and ProviderName.
+query TT
+SELECT column_name, status FROM focus.main.focus_validate('{FOCUS_FIXTURES}/focus_sample', spec_version := '1.3')
+WHERE check_name = 'column_present' AND column_name IN ('ServiceProviderName', 'HostProviderName', 'AllocatedTags') ORDER BY 1;
+----
+AllocatedTags	not_applicable
+HostProviderName	pass
+ServiceProviderName	pass

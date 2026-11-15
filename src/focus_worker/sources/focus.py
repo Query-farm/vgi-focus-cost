@@ -99,6 +99,8 @@ def _plain(arr: pa.Array | None) -> pa.Array | None:
     if arr is None:
         return None
     t = arr.type.value_type if pa.types.is_dictionary(arr.type) else arr.type
+    if pa.types.is_map(t):
+        return pa.array([None if v is None else json.dumps(dict(v), default=str) for v in arr.to_pylist()], pa.string())
     if pa.types.is_nested(t) or pa.types.is_binary(t) or pa.types.is_large_binary(t):
         return pa.array([None if v is None else json.dumps(v, default=str) for v in arr.to_pylist()], pa.string())
     return arr

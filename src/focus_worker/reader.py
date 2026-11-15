@@ -9,6 +9,7 @@ travels between calls.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import threading
 import uuid
 from collections import OrderedDict
@@ -79,6 +80,8 @@ class _Lru[K, V]:
                 self._d.popitem(last=False)
 
 
+log = logging.getLogger(__name__)
+
 _PLANS: _Lru[ScanRequest, Plan] = _Lru(16)
 _UNITS: _Lru[tuple[str, str], list[int]] = _Lru(256)
 
@@ -138,7 +141,26 @@ _OPS = {
 }
 
 
-def raw_filter(plan: Plan, file_schema: pa.Schema, filters: Any) -> ds.Expression | None:
+_FILE_SOURCES: _Lru[tuple[str, str], str] = _Lru(4096)
+
+
+def mapper_for_file(plan: Plan, i: int, file_schema: pa.Schema) -> Mapper:
+    """The mapper for file ``i``: the forced source, or per-file detection for 'auto'.
+
+    Detecting per file lets one glob cover a folder that mixes AWS, Azure, GCP and
+    FOCUS exports; every mapped source shares the same FOCUS output schema.
+    """
+    if plan.request.source != "auto":
+        return plan.mapper
+    key = (plan.files.uris[i], plan.request.source)
+    token = _FILE_SOURCES.get(key)
+    if token is None:
+        token = resolve_source("auto", file_schema.names)
+        _FILE_SOURCES.put(key, token)
+    return MAPPERS[token]
+
+
+def raw_filter(plan: Plan, file_schema: pa.Schema, filters: Any, mapper: Mapper | None = None) -> ds.Expression | None:
     """Translate pushed-down FOCUS predicates into a predicate on raw Parquet columns.
 
     Only exact, order-preserving copies (``Rule.direct``) of typed Parquet columns
@@ -146,8 +168,8 @@ def raw_filter(plan: Plan, file_schema: pa.Schema, filters: Any) -> ds.Expressio
     string equality / IN. The SDK re-applies every pushed predicate to the
     mapped rows, so this only ever narrows what is read, never the answer.
     """
-    mapper = plan.mapper
-    by_name = {plan.mapper.canonical_name(f.name).lower(): f for f in file_schema}
+    mapper = mapper or plan.mapper
+    by_name = {mapper.canonical_name(f.name).lower(): f for f in file_schema}
     parts: list[ds.Expression] = []
 
     def direct_field(focus_col: str) -> pa.Field[Any] | None:
@@ -215,17 +237,19 @@ def next_batch(
             continue
         frag = scan.fragment(files, i)
         fschema = frag.physical_schema
-        expr = raw_filter(plan, fschema, filters)
+        mapper = mapper_for_file(plan, i, fschema)
+        expr = raw_filter(plan, fschema, filters, mapper)
         units_key = (files.uris[i], str(expr))
         units = _UNITS.get(units_key)
         if units is None:
             units = scan.row_groups(frag, expr)
             _UNITS.put(units_key, units)
+            log.debug("scan %s: filter %s -> %d unit(s)", files.uris[i], expr, len(units))
         if cursor.unit_pos >= len(units):
             cursor.file_idx, cursor.unit_pos, cursor.batch_idx = i + 1, 0, 0
             continue
         position = (i, cursor.unit_pos, cursor.batch_idx)
-        raw_names = plan.mapper.raw_columns_for(internal_names, fschema.names)
+        raw_names = mapper.raw_columns_for(internal_names, fschema.names)
         it = scan.ITERATORS.take(cursor.scan_id, position)
         if it is None:
             it = scan.iter_unit(frag, units[cursor.unit_pos], raw_names, expr)
@@ -240,8 +264,8 @@ def next_batch(
         scan.ITERATORS.put(cursor.scan_id, (i, cursor.unit_pos, cursor.batch_idx), it)
         if raw.num_rows == 0:
             continue
-        opts = MapOptions(plan.request.money_scale, plan.mapper.token, files.uris[i])
-        mapped = map_batch(plan.mapper, raw, internal, opts)
+        opts = MapOptions(plan.request.money_scale, mapper.token, files.uris[i])
+        mapped = map_batch(mapper, raw, internal, opts)
         if plan.request.billing_period:
             lo, hi = month_bounds(plan.request.billing_period)
             col = mapped.column("BillingPeriodStart")
