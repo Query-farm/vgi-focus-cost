@@ -16,9 +16,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
-from ..convert import const, nulls, to_decimal, to_string, to_tags, to_timestamp
+from ..convert import Arr, const, nulls, pc, to_decimal, to_string, to_tags, to_timestamp
 from ..spec import QUANTITY_TYPE, UNIT_PRICE_TYPE
 
 
@@ -65,7 +64,7 @@ class Src:
         """Whether the raw column (or nested field) exists in this batch."""
         return self._resolve(name) is not None
 
-    def _resolve(self, name: str) -> pa.Array | None:
+    def _resolve(self, name: str) -> Arr | None:
         key = name.lower()
         if key in self._index:
             return self._col(self._index[key])
@@ -86,11 +85,11 @@ class Src:
                 return self._col(self._index[flat])
         return None
 
-    def _col(self, i: int) -> pa.Array:
+    def _col(self, i: int) -> Arr:
         return self.batch.column(i)
 
-    def get(self, *names: str) -> pa.Array | None:
-        """The first of ``names`` that exists, or ``None``."""
+    def get(self, *names: str) -> Arr | None:
+        """Return the first of ``names`` that exists, or ``None``."""
         for name in names:
             arr = self._resolve(name)
             if arr is not None:
@@ -98,67 +97,69 @@ class Src:
         return None
 
     # Typed helpers -------------------------------------------------------------
-    def string(self, *names: str) -> pa.Array:
+    def string(self, *names: str) -> Arr:
         """First existing column as VARCHAR (blank -> NULL), else all NULL."""
         return to_string(self.get(*names), self.n)
 
-    def money(self, scale: int, *names: str) -> pa.Array:
+    def money(self, scale: int, *names: str) -> Arr:
         """First existing column as DECIMAL(19, scale), else all NULL."""
         return to_decimal(self.get(*names), self.n, 19, scale, what="/".join(names))
 
-    def price(self, *names: str) -> pa.Array:
+    def price(self, *names: str) -> Arr:
         """First existing column as a unit price, DECIMAL(19,10)."""
-        return to_decimal(self.get(*names), self.n, UNIT_PRICE_TYPE.precision, UNIT_PRICE_TYPE.scale, what="/".join(names))
+        return to_decimal(
+            self.get(*names), self.n, UNIT_PRICE_TYPE.precision, UNIT_PRICE_TYPE.scale, what="/".join(names)
+        )
 
-    def quantity(self, *names: str) -> pa.Array:
+    def quantity(self, *names: str) -> Arr:
         """First existing column as a quantity, DECIMAL(28,10)."""
         return to_decimal(self.get(*names), self.n, QUANTITY_TYPE.precision, QUANTITY_TYPE.scale, what="/".join(names))
 
-    def timestamp(self, *names: str) -> pa.Array:
+    def timestamp(self, *names: str) -> Arr:
         """First existing column as TIMESTAMPTZ (UTC)."""
         return to_timestamp(self.get(*names), self.n, what="/".join(names))
 
-    def tags(self, *names: str, key_transform: Callable[[str], str] | None = None) -> pa.Array:
+    def tags(self, *names: str, key_transform: Callable[[str], str] | None = None) -> Arr:
         """First existing column as MAP(VARCHAR, VARCHAR)."""
         return to_tags(self.get(*names), self.n, key_transform=key_transform)
 
-    def const(self, value: Any, type_: pa.DataType | None = None) -> pa.Array:
-        """A constant column."""
+    def const(self, value: Any, type_: pa.DataType | None = None) -> Arr:
+        """Return a constant column."""
         return const(value, self.n, type_ or pa.string())
 
-    def null(self, type_: pa.DataType) -> pa.Array:
-        """An all-NULL column."""
+    def null(self, type_: pa.DataType) -> Arr:
+        """Return an all-NULL column."""
         return nulls(self.n, type_)
 
 
-def when(cond: pa.Array, then: pa.Array, otherwise: pa.Array) -> pa.Array:
+def when(cond: Arr, then: Arr, otherwise: Arr) -> Arr:
     """Vectorized IF with NULL conditions treated as false."""
     return pc.if_else(pc.fill_null(cond, False), then, otherwise)
 
 
-def isin(arr: pa.Array, values: Iterable[str]) -> pa.Array:
+def isin(arr: Arr, values: Iterable[str]) -> Arr:
     """Boolean mask: value in the set (NULL -> false)."""
     return pc.fill_null(pc.is_in(arr, value_set=pa.array(list(values), pa.string())), False)
 
 
-def zero_money(n: int, scale: int) -> pa.Array:
-    """A column of exact zeros."""
+def zero_money(n: int, scale: int) -> Arr:
+    """Return a column of exact zeros."""
     from decimal import Decimal
 
     return pa.repeat(pa.scalar(Decimal(0), pa.decimal128(19, scale)), n)
 
 
-def money_add(a: pa.Array, b: pa.Array, scale: int) -> pa.Array:
+def money_add(a: Arr, b: Arr, scale: int) -> Arr:
     """Exact a + b as DECIMAL(19, scale)."""
     return pc.cast(pc.add(a, b), pa.decimal128(19, scale))
 
 
-def money_sub(a: pa.Array, b: pa.Array, scale: int) -> pa.Array:
+def money_sub(a: Arr, b: Arr, scale: int) -> Arr:
     """Exact a - b as DECIMAL(19, scale)."""
     return pc.cast(pc.subtract(a, b), pa.decimal128(19, scale))
 
 
-def money_mul(a: pa.Array, b: pa.Array, scale: int, factor: pa.Array | None = None) -> pa.Array:
+def money_mul(a: Arr, b: Arr, scale: int, factor: Arr | None = None) -> Arr:
     """Exact a * b (* factor), rounded half-to-even to DECIMAL(19, scale).
 
     Done with Python ``decimal`` because the product of two wide decimals exceeds

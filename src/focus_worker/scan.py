@@ -26,7 +26,7 @@ import urllib.request
 from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import pyarrow as pa
 import pyarrow.csv as pacsv
@@ -134,7 +134,7 @@ class _HttpHandler(pafs.FileSystemHandler):
     def normalize_path(self, path: str) -> str:
         return path
 
-    def get_file_info(self, paths: list[str]) -> list[pafs.FileInfo]:
+    def get_file_info(self, paths: Any) -> list[pafs.FileInfo]:
         return [pafs.FileInfo(p, pafs.FileType.File, size=self._size(p)) for p in paths]
 
     def get_file_info_selector(self, selector: pafs.FileSelector) -> list[pafs.FileInfo]:
@@ -190,7 +190,7 @@ class ObjectStoreConfig:
     url_style: str | None = None
 
     def filesystem(self, scheme: str) -> pafs.FileSystem:
-        """A pyarrow S3 filesystem for these settings."""
+        """Return a pyarrow S3 filesystem for these settings."""
         endpoint = self.endpoint
         if scheme == "gs" and not endpoint:
             endpoint = "storage.googleapis.com"
@@ -287,14 +287,14 @@ def resolve(path: str, fmt: str = "auto", store: ObjectStoreConfig | None = None
     if scheme in ("http", "https"):
         if _has_glob(path.split("?", 1)[0].rsplit("/", 1)[-1]):
             raise ScanError("globs are not supported over HTTP; pass one URL per call")
-        fs = pafs.PyFileSystem(_HttpHandler())
-        return FileSet(fs, (path,), (path,), (file_format(path, fmt),))
+        http_fs: pafs.FileSystem = pafs.PyFileSystem(_HttpHandler())
+        return FileSet(http_fs, (path,), (path,), (file_format(path, fmt),))
     if scheme in ("s3", "gs", "gcs", "r2", "s3a"):
         fs = (store or ObjectStoreConfig()).filesystem("gs" if scheme in ("gs", "gcs") else scheme)
         bare = path.split("://", 1)[1]
         return _expand(fs, bare, fmt, prefix=f"{scheme}://")
     if scheme == "file":
-        path = path[len("file://"):]
+        path = path[len("file://") :]
     elif scheme:
         raise ScanError(
             f"{scheme}:// paths are not read directly; download the export first, or read it with DuckDB "
@@ -306,7 +306,9 @@ def resolve(path: str, fmt: str = "auto", store: ObjectStoreConfig | None = None
         matches = [os.path.abspath(m) for m in matches if _wanted(m, fmt)]
         if not matches:
             raise ScanError(f"no files match {path!r}")
-        return FileSet(pafs.LocalFileSystem(), tuple(matches), tuple(matches), tuple(file_format(m, fmt) for m in matches))
+        return FileSet(
+            pafs.LocalFileSystem(), tuple(matches), tuple(matches), tuple(file_format(m, fmt) for m in matches)
+        )
     if os.path.isdir(local):
         found = []
         for root, dirs, files in os.walk(local):
@@ -326,7 +328,9 @@ def _expand(fs: pafs.FileSystem, bare: str, fmt: str, *, prefix: str) -> FileSet
             static = re.split(r"[*?\[]", bare, maxsplit=1)[0].rsplit("/", 1)[0]
             infos = fs.get_file_info(pafs.FileSelector(static, recursive=True))
             pattern = bare.replace("**/", "*").replace("**", "*")
-            files = sorted(i.path for i in infos if i.type == pafs.FileType.File and fnmatch.fnmatchcase(i.path, pattern))
+            files = sorted(
+                i.path for i in infos if i.type == pafs.FileType.File and fnmatch.fnmatchcase(i.path, pattern)
+            )
         else:
             info = fs.get_file_info(bare)
             if info.type == pafs.FileType.Directory:
@@ -348,25 +352,27 @@ def _expand(fs: pafs.FileSystem, bare: str, fmt: str, *, prefix: str) -> FileSet
 
 def _csv_names(fs: pafs.FileSystem, path: str) -> list[str]:
     with fs.open_input_stream(path, compression="detect") as stream:
-        reader = pacsv.open_csv(stream, read_options=pacsv.ReadOptions(block_size=1 << 20))
+        reader = pacsv.open_csv(cast(Any, stream), read_options=pacsv.ReadOptions(block_size=1 << 20))
         return list(reader.schema.names)
 
 
 def file_format_object(fs: pafs.FileSystem, path: str, fmt: str) -> ds.FileFormat:
-    """The dataset format for one file. CSV columns are all read as text."""
+    """Return the dataset format for one file. CSV columns are all read as text."""
     if fmt == "parquet":
         return ds.ParquetFileFormat()
     if fmt == "csv":
         names = _csv_names(fs, path)
         return ds.CsvFileFormat(
             read_options=pacsv.ReadOptions(block_size=1 << 22),
-            convert_options=pacsv.ConvertOptions(column_types=dict.fromkeys(names, pa.string()), strings_can_be_null=True),
+            convert_options=pacsv.ConvertOptions(
+                column_types=dict.fromkeys(names, pa.string()), strings_can_be_null=True
+            ),
         )
     return ds.JsonFileFormat(read_options=pajson.ReadOptions(block_size=1 << 24))
 
 
-def fragment(files: FileSet, i: int) -> ds.FileFragment:
-    """A dataset fragment for file ``i``."""
+def fragment(files: FileSet, i: int) -> Any:
+    """Return a dataset fragment for file ``i``."""
     path, fmt = files.files[i], files.formats[i]
     try:
         return file_format_object(files.filesystem, path, fmt).make_fragment(path, filesystem=files.filesystem)
@@ -375,30 +381,30 @@ def fragment(files: FileSet, i: int) -> ds.FileFragment:
 
 
 def file_schema(files: FileSet, i: int) -> pa.Schema:
-    """The physical schema of file ``i``."""
+    """Return the physical schema of file ``i``."""
     try:
-        return fragment(files, i).physical_schema
+        schema: pa.Schema = fragment(files, i).physical_schema
+        return schema
     except (OSError, pa.ArrowInvalid) as err:
         raise ScanError(f"cannot read the schema of {files.uris[i]}: {err}") from err
 
 
-def row_groups(frag: ds.FileFragment, expr: ds.Expression | None) -> list[int]:
-    """Row group ids of a Parquet fragment that may contain matching rows."""
+def row_groups(frag: Any, expr: ds.Expression | None) -> list[int]:
+    """Return the row group ids of a Parquet fragment that may contain matching rows."""
     if not isinstance(frag, ds.ParquetFileFragment):
         return [-1]
     if expr is None:
         return list(range(frag.metadata.num_row_groups))
     try:
-        return [rg.id for rg in frag.subset(filter=expr).row_groups]
+        subset: Any = frag.subset(filter=expr)
+        return [rg.id for rg in subset.row_groups]
     except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
         return list(range(frag.metadata.num_row_groups))
 
 
-def iter_unit(
-    frag: ds.FileFragment, rg: int, columns: list[str], expr: ds.Expression | None
-) -> Iterator[pa.RecordBatch]:
+def iter_unit(frag: Any, rg: int, columns: list[str], expr: ds.Expression | None) -> Iterator[pa.RecordBatch]:
     """Stream the batches of one unit (row group ``rg``, or the whole file for -1)."""
-    unit = frag.subset(row_group_ids=[rg]) if rg >= 0 and isinstance(frag, ds.ParquetFileFragment) else frag
+    unit: Any = frag.subset(row_group_ids=[rg]) if rg >= 0 and isinstance(frag, ds.ParquetFileFragment) else frag
     try:
         yield from unit.to_batches(columns=columns, filter=expr, batch_size=BATCH_ROWS, use_threads=False)
     except TypeError:
@@ -422,12 +428,13 @@ class IteratorCache:
     """Open batch iterators keyed by scan id, so sequential calls do not re-open files."""
 
     def __init__(self, capacity: int = 32) -> None:
+        """Create an empty cache holding at most ``capacity`` scans."""
         self._items: OrderedDict[str, tuple[tuple[int, int, int], Iterator[pa.RecordBatch]]] = OrderedDict()
         self._lock = threading.Lock()
         self._capacity = capacity
 
     def take(self, scan_id: str, position: tuple[int, int, int]) -> Iterator[pa.RecordBatch] | None:
-        """The cached iterator if it is exactly at ``position``."""
+        """Return the cached iterator if it is exactly at ``position``."""
         with self._lock:
             item = self._items.pop(scan_id, None)
         if item is None or item[0] != position:

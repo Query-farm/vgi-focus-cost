@@ -60,7 +60,7 @@ def schema_columns_json(schema: pa.Schema) -> list[dict[str, str]]:
 
 
 def focus_result_columns() -> list[dict[str, str]]:
-    """Result columns of ``focus()`` / ``to_focus()`` at the default version and scale."""
+    """Return Result columns of ``focus()`` / ``to_focus()`` at the default version and scale."""
     from .sources import output_schema
     from .spec import DEFAULT_MONEY_SCALE, DEFAULT_SPEC_VERSION
 
@@ -125,10 +125,8 @@ SCHEMA_DOC_MD = (
 
 AGENT_TEST_TASKS = [
     {
-        "name": "effective_cost_by_provider",
-        "prompt": "Using the focus worker and the FOCUS sample file at "
-        "https://raw.githubusercontent.com/Query-farm/vgi-focus-cost/main/test/fixtures/focus_sample/focus_sample_1_0.csv, "
-        "what is the total EffectiveCost per ProviderName?",
+        "name": "aws_effective_cost_inputs",
+        "prompt": "Which raw AWS CUR 2.0 columns does the focus worker read to compute EffectiveCost?",
     },
     {
         "name": "ec2_category",

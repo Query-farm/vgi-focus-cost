@@ -16,21 +16,45 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
+from focus_worker.convert import pc
 from focus_worker.reader import ScanRequest, make_plan, new_cursor, next_batch
 
 from .conftest import FIXTURE_SOURCES, FIXTURES
 
 GOLDEN = Path(__file__).resolve().parent / "golden"
 KEY_COLUMNS = [
-    "BilledCost", "EffectiveCost", "ListCost", "ContractedCost", "ChargeCategory", "ChargeClass", "ChargeFrequency",
-    "ChargePeriodStart", "ChargePeriodEnd", "BillingPeriodStart", "CommitmentDiscountId", "CommitmentDiscountType",
-    "CommitmentDiscountCategory", "CommitmentDiscountStatus", "PricingCategory", "PricingQuantity", "PricingUnit",
-    "ConsumedQuantity", "ServiceName", "ServiceCategory", "ServiceSubcategory", "RegionId", "ResourceId",
-    "SubAccountId", "ProviderName", "PublisherName", "InvoiceIssuerName", "Tags", "x_ChargeType",
+    "BilledCost",
+    "EffectiveCost",
+    "ListCost",
+    "ContractedCost",
+    "ChargeCategory",
+    "ChargeClass",
+    "ChargeFrequency",
+    "ChargePeriodStart",
+    "ChargePeriodEnd",
+    "BillingPeriodStart",
+    "CommitmentDiscountId",
+    "CommitmentDiscountType",
+    "CommitmentDiscountCategory",
+    "CommitmentDiscountStatus",
+    "PricingCategory",
+    "PricingQuantity",
+    "PricingUnit",
+    "ConsumedQuantity",
+    "ServiceName",
+    "ServiceCategory",
+    "ServiceSubcategory",
+    "RegionId",
+    "ResourceId",
+    "SubAccountId",
+    "ProviderName",
+    "PublisherName",
+    "InvoiceIssuerName",
+    "Tags",
+    "x_ChargeType",
 ]
 
 
@@ -60,11 +84,16 @@ def snapshot(table: pa.Table) -> dict[str, Any]:
         key = f"{ct}|{r.get('CommitmentDiscountStatus')}|{r.get('ServiceCategory')}"
         seen.setdefault(key, {k: _jsonable(v) for k, v in r.items()})
     totals = (
-        table.group_by(["ChargeCategory"]).aggregate([("BilledCost", "sum"), ("EffectiveCost", "sum"), ("BilledCost", "count")])
-        .sort_by("ChargeCategory").to_pylist()
+        table.group_by(["ChargeCategory"])
+        .aggregate([("BilledCost", "sum"), ("EffectiveCost", "sum"), ("BilledCost", "count")])
+        .sort_by("ChargeCategory")
+        .to_pylist()
     )
-    return {"rows": table.num_rows, "first_by_charge_type": dict(sorted(seen.items())),
-            "totals": [{k: _jsonable(v) for k, v in t.items()} for t in totals]}
+    return {
+        "rows": table.num_rows,
+        "first_by_charge_type": dict(sorted(seen.items())),
+        "totals": [{k: _jsonable(v) for k, v in t.items()} for t in totals],
+    }
 
 
 @pytest.mark.parametrize(("path", "source"), FIXTURE_SOURCES)
@@ -100,7 +129,9 @@ def test_aws_amortization_matches_decimal_reference() -> None:
             expected_effective += _q(r["reservation_unused_amortized_upfront_fee_for_billing_period"]) + _q(
                 r["reservation_unused_recurring_fee"]
             )
-        elif t in ("SavingsPlanNegation", "SavingsPlanUpfrontFee") or (t == "Fee" and r["reservation_reservation_a_r_n"]):
+        elif t in ("SavingsPlanNegation", "SavingsPlanUpfrontFee") or (
+            t == "Fee" and r["reservation_reservation_a_r_n"]
+        ):
             pass
         else:
             expected_effective += _q(r["line_item_unblended_cost"])
@@ -112,8 +143,12 @@ def test_aws_amortization_matches_decimal_reference() -> None:
 
 def test_aws_unused_commitment_rows() -> None:
     t = read(str(FIXTURES / "aws_cur2"), "aws_cur2", version="1.2")
-    unused = t.filter(pc.equal(t["CommitmentDiscountStatus"], "Unused")).sort_by([("x_ChargeType", "ascending"), ("BillingPeriodStart", "ascending")])
-    rows = unused.select(["x_ChargeType", "ChargeCategory", "BilledCost", "EffectiveCost", "CommitmentDiscountType"]).to_pylist()
+    unused = t.filter(pc.equal(t["CommitmentDiscountStatus"], "Unused")).sort_by(
+        [("x_ChargeType", "ascending"), ("BillingPeriodStart", "ascending")]
+    )
+    rows = unused.select(
+        ["x_ChargeType", "ChargeCategory", "BilledCost", "EffectiveCost", "CommitmentDiscountType"]
+    ).to_pylist()
     assert [r["x_ChargeType"] for r in rows] == ["RIFee (unused)"] * 2 + ["SavingsPlanRecurringFee (unused)"] * 2
     assert all(r["ChargeCategory"] == "Usage" and r["BilledCost"] == 0 for r in rows)
     assert rows[0]["EffectiveCost"] == Decimal("3.750000")  # 1.50 upfront + 2.25 recurring unused
@@ -132,11 +167,11 @@ def test_aws_classification_and_correction() -> None:
     assert by["SavingsPlanCoveredUsage"]["CommitmentDiscountCategory"] == "Spend"
     assert by["Tax"]["PricingQuantity"] is None and by["Tax"]["ConsumedQuantity"] is None
     assert by["Credit"]["ChargeCategory"] == "Credit"
-    market = [r for r in t.to_pylist() if r["x_ServiceCode"] == "prod-abc123marketplace"][0]
+    market = next(r for r in t.to_pylist() if r["x_ServiceCode"] == "prod-abc123marketplace")
     assert market["PublisherName"] == "Acme SaaS Vendor LLC"
     assert market["ProviderName"] == "AWS"
     assert market["ServiceName"] == "Acme Observability Pro"
-    ec2 = [r for r in t.to_pylist() if r["x_ServiceCode"] == "AmazonEC2" and r["x_ChargeType"] == "Usage"][0]
+    ec2 = next(r for r in t.to_pylist() if r["x_ServiceCode"] == "AmazonEC2" and r["x_ChargeType"] == "Usage")
     assert ec2["ServiceCategory"] == "Compute" and ec2["ServiceSubcategory"] == "Virtual Machines"
     assert dict(ec2["Tags"]) == {"team": "search", "env": "dev"}  # 'user_' prefix removed
 
@@ -146,9 +181,11 @@ def test_legacy_cur_headers() -> None:
     assert t.column("x_SourceFormat")[0].as_py() == "aws_cur2"
     usage = t.filter(pc.equal(t["ChargeCategory"], "Usage"))
     assert usage.num_rows == 10
-    assert pc.sum(t["BilledCost"]).as_py() == Decimal("5") * (Decimal("0.0416") + Decimal("0.526")) * 24 + Decimal("1.07")
+    assert pc.sum(t["BilledCost"]).as_py() == Decimal("5") * (Decimal("0.0416") + Decimal("0.526")) * 24 + Decimal(
+        "1.07"
+    )
     assert usage.column("RegionId")[0].as_py() == "us-east-1"
-    assert sorted({dict(x)["team"] for x in usage.column("Tags").to_pylist()}) == ["ml", "search"]
+    assert sorted({str(dict(x or [])["team"]) for x in usage.column("Tags").to_pylist()}) == ["ml", "search"]
 
 
 def test_sub_microdollar_costs_round_half_even_and_money_scale() -> None:
@@ -164,10 +201,13 @@ def test_sub_microdollar_costs_round_half_even_and_money_scale() -> None:
 def test_azure_actual_vs_amortized() -> None:
     actual = read(str(FIXTURES / "azure" / "contoso-actual-cost-202607.csv"), "azure")
     amort = read(str(FIXTURES / "azure" / "contoso-amortized-cost-202607.parquet"), "azure_amortized")
+
     # Both describe the same month: what is not commitment-related agrees exactly.
     def ondemand(t: pa.Table) -> Decimal:
         mask = pc.and_(pc.is_null(t["CommitmentDiscountId"]), pc.equal(t["ChargeCategory"], "Usage"))
-        return pc.sum(t.filter(mask)["BilledCost"]).as_py()
+        total: Decimal = pc.sum(t.filter(mask)["BilledCost"]).as_py()
+        return total
+
     assert ondemand(actual) == ondemand(amort)
     # Amortized EffectiveCost = on-demand + reservation/savings-plan usage + unused reservation.
     used = amort.filter(pc.equal(amort["CommitmentDiscountStatus"], "Used"))
@@ -235,5 +275,5 @@ def test_native_focus_passthrough_keeps_x_columns() -> None:
 def test_focus_sample_1_0_reads_as_1_2() -> None:
     t = read(str(FIXTURES / "focus_sample"), "auto")
     assert t.num_rows == 300
-    assert sorted(set(t.column("ProviderName").to_pylist())) == ["AWS", "Microsoft", "Oracle"]
+    assert sorted({str(p) for p in t.column("ProviderName").to_pylist()}) == ["AWS", "Microsoft", "Oracle"]
     assert t.schema.field("ChargePeriodStart").type == pa.timestamp("us", tz="UTC")

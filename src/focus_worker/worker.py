@@ -1,9 +1,9 @@
 """Assemble the focus catalog and run the worker.
 
-    vgi-focus-worker                      # stdio: what DuckDB launches by default
-    vgi-focus-worker --http --port 8000   # HTTP: for Docker / hosted deploys
+vgi-focus-worker                      # stdio: what DuckDB launches by default
+vgi-focus-worker --http --port 8000   # HTTP: for Docker / hosted deploys
 
-    ATTACH 'focus' (TYPE vgi, LOCATION '/abs/path/to/.venv/bin/vgi-focus-worker');
+ATTACH 'focus' (TYPE vgi, LOCATION '/abs/path/to/.venv/bin/vgi-focus-worker');
 """
 
 from __future__ import annotations

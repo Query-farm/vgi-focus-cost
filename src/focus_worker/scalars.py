@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import pyarrow as pa
 from vgi.arguments import ConstParam, Param, Returns
@@ -12,6 +12,7 @@ from vgi.metadata import FunctionExample
 from vgi.scalar_function import ScalarFunction
 
 from . import services
+from .convert import Arr
 from .meta import object_tags
 from .sources import MAPPERS, aws, azure, gcp
 from .spec import DEFAULT_SPEC_VERSION, SPEC_VERSIONS, column_index
@@ -30,11 +31,11 @@ def _executable(*items: tuple[str, str, list[list[Any]]]) -> str:
     return json.dumps([{"description": d, "sql": s, "expected_result": r} for d, s, r in items])
 
 
-def _pairs(a: pa.Array, b: pa.Array) -> list[tuple[Any, Any]]:
+def _pairs(a: Arr, b: Arr) -> list[tuple[Any, Any]]:
     return list(zip(a.to_pylist(), b.to_pylist(), strict=True))
 
 
-def _pairwise(a: pa.Array, b: pa.Array, fn: Any, out_type: pa.DataType) -> pa.Array:
+def _pairwise(a: Arr, b: Arr, fn: Any, out_type: pa.DataType) -> pa.StringArray:
     """Apply ``fn`` once per distinct (a, b) pair."""
     memo: dict[tuple[Any, Any], Any] = {}
     out = []
@@ -42,7 +43,7 @@ def _pairwise(a: pa.Array, b: pa.Array, fn: Any, out_type: pa.DataType) -> pa.Ar
         if pair not in memo:
             memo[pair] = fn(*pair)
         out.append(memo[pair])
-    return pa.array(out, out_type)
+    return cast("pa.StringArray", pa.array(out, out_type))
 
 
 class ServiceCategory(ScalarFunction):
@@ -67,11 +68,14 @@ class ServiceCategory(ScalarFunction):
                 doc_md="## focus_service_category(provider, service)\n\nFOCUS ServiceCategory; `Other` when unknown.",
             ),
             "vgi.executable_examples": _executable(
-                ("AWS, Azure and GCP services",
-                 "SELECT focus.main.focus_service_category(p, s) AS c FROM (VALUES ('aws', 'AmazonRDS', 1), "
-                 "('azure', 'Virtual Machines', 2), ('gcp', 'Cloud Storage', 3), ('aws', 'NotAService', 4)) t(p, s, i) "
-                 "ORDER BY i",
-                 [["Databases"], ["Compute"], ["Storage"], ["Other"]]),
+                (
+                    "AWS, Azure and GCP services",
+                    "SELECT focus.main.focus_service_category(p, s) AS c FROM (VALUES ('aws', 'AmazonRDS', 1), "
+                    "('azure', 'Virtual Machines', 2), ('gcp', 'Cloud Storage', 3), ('aws', "
+                    "'NotAService', 4)) t(p, s, i) "
+                    "ORDER BY i",
+                    [["Databases"], ["Compute"], ["Storage"], ["Other"]],
+                ),
             ),
         }
         examples = [
@@ -88,7 +92,7 @@ class ServiceCategory(ScalarFunction):
         service: Annotated[pa.StringArray, Param(doc=_SERVICE_DOC)],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Look each (provider, service) up in the service map."""
-        return _pairwise(provider, service, services.category, pa.string())  # type: ignore[return-value]
+        return _pairwise(provider, service, services.category, pa.string())
 
 
 class ServiceSubcategory(ScalarFunction):
@@ -98,7 +102,9 @@ class ServiceSubcategory(ScalarFunction):
         """Function metadata."""
 
         name = "focus_service_subcategory"
-        description = "FOCUS ServiceSubcategory for a provider service, e.g. ('aws', 'AmazonRDS') -> 'Relational Databases'"
+        description = (
+            "FOCUS ServiceSubcategory for a provider service, e.g. ('aws', 'AmazonRDS') -> 'Relational Databases'"
+        )
         tags = {
             **object_tags(
                 title="Service Subcategory",
@@ -112,9 +118,12 @@ class ServiceSubcategory(ScalarFunction):
                 doc_md="## focus_service_subcategory(provider, service)\n\nFOCUS ServiceSubcategory.",
             ),
             "vgi.executable_examples": _executable(
-                ("Subcategories", "SELECT focus.main.focus_service_subcategory('aws', 'AmazonRDS') AS a, "
-                 "focus.main.focus_service_subcategory('gcp', 'Cloud Run') AS b",
-                 [["Relational Databases", "Serverless Compute"]]),
+                (
+                    "Subcategories",
+                    "SELECT focus.main.focus_service_subcategory('aws', 'AmazonRDS') AS a, "
+                    "focus.main.focus_service_subcategory('gcp', 'Cloud Run') AS b",
+                    [["Relational Databases", "Serverless Compute"]],
+                ),
             ),
         }
         examples = [
@@ -131,7 +140,7 @@ class ServiceSubcategory(ScalarFunction):
         service: Annotated[pa.StringArray, Param(doc=_SERVICE_DOC)],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Look each (provider, service) up in the service map."""
-        return _pairwise(provider, service, services.subcategory, pa.string())  # type: ignore[return-value]
+        return _pairwise(provider, service, services.subcategory, pa.string())
 
 
 _CHARGE_TABLES: dict[str, dict[str, str]] = {
@@ -171,15 +180,20 @@ class ChargeCategory(ScalarFunction):
                 doc_md="## focus_charge_category(provider, charge_type)\n\nSee `charge_type_map` for every rule.",
             ),
             "vgi.executable_examples": _executable(
-                ("One per provider",
-                 "SELECT focus.main.focus_charge_category(p, t) AS c FROM (VALUES ('aws', 'SavingsPlanCoveredUsage', 1), "
-                 "('azure', 'Purchase', 2), ('gcp', 'tax', 3)) v(p, t, i) ORDER BY i",
-                 [["Usage"], ["Purchase"], ["Tax"]]),
+                (
+                    "One per provider",
+                    "SELECT focus.main.focus_charge_category(p, t) AS c FROM (VALUES ('aws', "
+                    "'SavingsPlanCoveredUsage', 1), "
+                    "('azure', 'Purchase', 2), ('gcp', 'tax', 3)) v(p, t, i) ORDER BY i",
+                    [["Usage"], ["Purchase"], ["Tax"]],
+                ),
             ),
         }
         examples = [
-            FunctionExample(sql="SELECT focus.main.focus_charge_category('aws', 'RIFee') AS category",
-                            description="AWS reserved-instance fee")
+            FunctionExample(
+                sql="SELECT focus.main.focus_charge_category('aws', 'RIFee') AS category",
+                description="AWS reserved-instance fee",
+            )
         ]
 
     @classmethod
@@ -189,7 +203,7 @@ class ChargeCategory(ScalarFunction):
         charge_type: Annotated[pa.StringArray, Param(doc="Raw charge type, e.g. 'RIFee', 'UnusedReservation', 'tax'.")],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Look each (provider, charge type) up."""
-        return _pairwise(provider, charge_type, charge_category, pa.string())  # type: ignore[return-value]
+        return _pairwise(provider, charge_type, charge_category, pa.string())
 
 
 def map_column(source: str | None, raw: str | None) -> str | None:
@@ -227,19 +241,27 @@ class MapColumn(ScalarFunction):
                     "when the reader ignores that column. Legacy CUR headers ('lineItem/UnblendedCost') are accepted. "
                     "Use it to find export columns the mapping does not use."
                 ),
-                doc_md="## focus_map_column(source, source_column)\n\nLineage from a raw export column to FOCUS columns.",
+                doc_md="## focus_map_column(source, source_column)\n\nLineage from a raw export "
+                "column to FOCUS columns.",
             ),
             "vgi.executable_examples": _executable(
-                ("AWS unblended cost",
-                 "SELECT focus.main.focus_map_column('aws_cur2', 'lineItem/UnblendedCost') AS cols",
-                 [["BilledCost, ContractedCost, EffectiveCost, ListCost"]]),
-                ("An unused column", "SELECT focus.main.focus_map_column('azure', 'CostCenter') IS NULL AS unused",
-                 [[True]]),
+                (
+                    "AWS unblended cost",
+                    "SELECT focus.main.focus_map_column('aws_cur2', 'lineItem/UnblendedCost') AS cols",
+                    [["BilledCost, ContractedCost, EffectiveCost, ListCost"]],
+                ),
+                (
+                    "An unused column",
+                    "SELECT focus.main.focus_map_column('azure', 'CostCenter') IS NULL AS unused",
+                    [[True]],
+                ),
             ),
         }
         examples = [
-            FunctionExample(sql="SELECT focus.main.focus_map_column('gcp', 'cost_at_list') AS focus_columns",
-                            description="Where GCP list cost goes")
+            FunctionExample(
+                sql="SELECT focus.main.focus_map_column('gcp', 'cost_at_list') AS focus_columns",
+                description="Where GCP list cost goes",
+            )
         ]
 
     @classmethod
@@ -249,7 +271,7 @@ class MapColumn(ScalarFunction):
         source_column: Annotated[pa.StringArray, Param(doc="Raw export column name, case-insensitive.")],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Find the rules that read each column."""
-        return _pairwise(source, source_column, map_column, pa.string())  # type: ignore[return-value]
+        return _pairwise(source, source_column, map_column, pa.string())
 
 
 def validate_value(column: str | None, value: str | None, version: str = DEFAULT_SPEC_VERSION) -> str | None:
@@ -268,7 +290,9 @@ def validate_value(column: str | None, value: str | None, version: str = DEFAULT
             Decimal(value)
         except InvalidOperation:
             return f"{value!r} is not a decimal number"
-    if column in ("BillingCurrency", "PricingCurrency") and not (len(value) == 3 and value.isalpha() and value.isupper()):
+    if column in ("BillingCurrency", "PricingCurrency") and not (
+        len(value) == 3 and value.isalpha() and value.isupper()
+    ):
         return f"{value!r} is not an ISO 4217 currency code"
     return None
 
@@ -295,15 +319,19 @@ class ValidateValue(ScalarFunction):
                 doc_md="## focus_validate_value(column_name, value)\n\nNULL = legal; otherwise the violation.",
             ),
             "vgi.executable_examples": _executable(
-                ("A legal and an illegal ChargeCategory",
-                 "SELECT focus.main.focus_validate_value('ChargeCategory', 'Usage') IS NULL AS ok, "
-                 "focus.main.focus_validate_value('ChargeCategory', 'Fee') LIKE '%not an allowed%' AS bad",
-                 [[True, True]]),
+                (
+                    "A legal and an illegal ChargeCategory",
+                    "SELECT focus.main.focus_validate_value('ChargeCategory', 'Usage') IS NULL AS ok, "
+                    "focus.main.focus_validate_value('ChargeCategory', 'Fee') LIKE '%not an allowed%' AS bad",
+                    [[True, True]],
+                ),
             ),
         }
         examples = [
-            FunctionExample(sql="SELECT focus.main.focus_validate_value('ChargeFrequency', 'Monthly') AS problem",
-                            description="An invalid ChargeFrequency")
+            FunctionExample(
+                sql="SELECT focus.main.focus_validate_value('ChargeFrequency', 'Monthly') AS problem",
+                description="An invalid ChargeFrequency",
+            )
         ]
 
     @classmethod
@@ -313,7 +341,7 @@ class ValidateValue(ScalarFunction):
         value: Annotated[pa.StringArray, Param(doc="The value to check, as text; NULL checks nullability.")],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Validate each value against FOCUS 1.2."""
-        return _pairwise(column_name, value, validate_value, pa.string())  # type: ignore[return-value]
+        return _pairwise(column_name, value, validate_value, pa.string())
 
 
 class ValidateValueVersion(ScalarFunction):
@@ -336,15 +364,19 @@ class ValidateValueVersion(ScalarFunction):
                 doc_md="## focus_validate_value(column_name, value, spec_version)\n\nVersioned value check.",
             ),
             "vgi.executable_examples": _executable(
-                ("ServiceProviderName only exists from 1.3",
-                 "SELECT focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.2') AS v12, "
-                 "focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.3') AS v13",
-                 [["ServiceProviderName is not a FOCUS 1.2 column", None]]),
+                (
+                    "ServiceProviderName only exists from 1.3",
+                    "SELECT focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.2') AS v12, "
+                    "focus.main.focus_validate_value('ServiceProviderName', 'AWS', '1.3') AS v13",
+                    [["ServiceProviderName is not a FOCUS 1.2 column", None]],
+                ),
             ),
         }
         examples = [
-            FunctionExample(sql="SELECT focus.main.focus_validate_value('ChargeCategory', 'Usage', '1.0') AS problem",
-                            description="Validate against FOCUS 1.0")
+            FunctionExample(
+                sql="SELECT focus.main.focus_validate_value('ChargeCategory', 'Usage', '1.0') AS problem",
+                description="Validate against FOCUS 1.0",
+            )
         ]
 
     @classmethod
@@ -355,7 +387,7 @@ class ValidateValueVersion(ScalarFunction):
         spec_version: Annotated[str, ConstParam("FOCUS version: '1.0' to '1.4'.", choices=list(SPEC_VERSIONS))],
     ) -> Annotated[pa.StringArray, Returns()]:
         """Validate each value against the given version."""
-        return _pairwise(column_name, value, lambda c, v: validate_value(c, v, spec_version), pa.string())  # type: ignore[return-value]
+        return _pairwise(column_name, value, lambda c, v: validate_value(c, v, spec_version), pa.string())
 
 
 class SpecVersion(ScalarFunction):
@@ -381,16 +413,19 @@ class SpecVersion(ScalarFunction):
                 ("Default version", "SELECT focus.main.focus_spec_version() AS v", [["1.2"]]),
             ),
         }
-        examples = [FunctionExample(sql="SELECT focus.main.focus_spec_version() AS version", description="Default version")]
+        examples = [
+            FunctionExample(sql="SELECT focus.main.focus_spec_version() AS version", description="Default version")
+        ]
 
     @classmethod
     def compute(cls) -> Annotated[pa.StringArray, Returns()]:
-        """The default version."""
-        return pa.array([DEFAULT_SPEC_VERSION], pa.string())  # type: ignore[return-value]
+        """Return the default version."""
+        out: pa.StringArray = pa.array([DEFAULT_SPEC_VERSION], pa.string())
+        return out
 
 
 def exact_divide(numerator: Decimal | None, denominator: Decimal | None) -> Decimal | None:
-    """numerator / denominator rounded half-to-even to 10 places; NULL for NULL or zero denominator."""
+    """Numerator / denominator rounded half-to-even to 10 places; NULL for NULL or zero denominator."""
     if numerator is None or denominator is None or denominator == 0:
         return None
     with localcontext() as ctx:
@@ -401,9 +436,9 @@ def exact_divide(numerator: Decimal | None, denominator: Decimal | None) -> Deci
     return q
 
 
-def _divide_arrays(n: pa.Array, d: pa.Array) -> pa.Array:
+def _divide_arrays(n: Arr, d: Arr) -> pa.Decimal128Array:
     out = [exact_divide(a, b) for a, b in zip(n.to_pylist(), d.to_pylist(), strict=True)]
-    return pa.array(out, RATIO_TYPE)
+    return cast("pa.Decimal128Array", pa.array(out, RATIO_TYPE))
 
 
 class Divide(ScalarFunction):
@@ -429,9 +464,11 @@ class Divide(ScalarFunction):
                 doc_md="## focus_divide(numerator, denominator)\n\nExact ratio, DECIMAL(19,10); `/` would give DOUBLE.",
             ),
             "vgi.executable_examples": _executable(
-                ("Ten over three, and a zero denominator",
-                 "SELECT focus.main.focus_divide(10, 3) AS r, focus.main.focus_divide(1, 0) AS z",
-                 [["3.3333333333", None]]),
+                (
+                    "Ten over three, and a zero denominator",
+                    "SELECT focus.main.focus_divide(10, 3) AS r, focus.main.focus_divide(1, 0) AS z",
+                    [["3.3333333333", None]],
+                ),
             ),
         }
         examples = [
@@ -445,11 +482,13 @@ class Divide(ScalarFunction):
     @classmethod
     def compute(
         cls,
-        numerator: Annotated[pa.Decimal128Array, Param(WIDE_TYPE, doc="Dividend, any DECIMAL or integer (cast to DECIMAL(38,10)).")],
+        numerator: Annotated[
+            pa.Decimal128Array, Param(WIDE_TYPE, doc="Dividend, any DECIMAL or integer (cast to DECIMAL(38,10)).")
+        ],
         denominator: Annotated[pa.Decimal128Array, Param(WIDE_TYPE, doc="Divisor; 0 or NULL gives NULL.")],
     ) -> Annotated[pa.Decimal128Array, Returns(RATIO_TYPE)]:
         """Divide row by row with Python decimal."""
-        return _divide_arrays(numerator, denominator)  # type: ignore[return-value]
+        return _divide_arrays(numerator, denominator)
 
 
 class EffectiveRate(ScalarFunction):
@@ -473,13 +512,17 @@ class EffectiveRate(ScalarFunction):
                 doc_md="## focus_effective_rate(cost, quantity)\n\nExact cost per unit, DECIMAL(19,10).",
             ),
             "vgi.executable_examples": _executable(
-                ("Hourly rate of 24 hours costing 2.7408",
-                 "SELECT focus.main.focus_effective_rate(2.7408, 24) AS rate", [["0.1142000000"]]),
+                (
+                    "Hourly rate of 24 hours costing 2.7408",
+                    "SELECT focus.main.focus_effective_rate(2.7408, 24) AS rate",
+                    [["0.1142000000"]],
+                ),
             ),
         }
         examples = [
             FunctionExample(
-                sql="SELECT ResourceId, focus.main.focus_effective_rate(sum(EffectiveCost), sum(PricingQuantity)) AS rate "
+                sql="SELECT ResourceId, focus.main.focus_effective_rate(sum(EffectiveCost), "
+                "sum(PricingQuantity)) AS rate "
                 "FROM focus.main.focus('/data/billing/') WHERE ChargeCategory = 'Usage' GROUP BY ResourceId",
                 description="Effective hourly rate per resource",
             )
@@ -492,7 +535,7 @@ class EffectiveRate(ScalarFunction):
         quantity: Annotated[pa.Decimal128Array, Param(WIDE_TYPE, doc="Quantity, e.g. PricingQuantity; 0 gives NULL.")],
     ) -> Annotated[pa.Decimal128Array, Returns(RATIO_TYPE)]:
         """Divide row by row with Python decimal."""
-        return _divide_arrays(cost, quantity)  # type: ignore[return-value]
+        return _divide_arrays(cost, quantity)
 
 
 SCALARS: list[type[Any]] = [

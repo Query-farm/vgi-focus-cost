@@ -72,7 +72,7 @@ def request_secret(params: BindParams[Any], path: str) -> dict[str, Any] | None:
 
 
 def store_from_resolved(secrets: Any, path: str) -> scan.ObjectStoreConfig | None:
-    """The object-store settings for ``path`` from already-resolved secrets."""
+    """Return the object-store settings for ``path`` from already-resolved secrets."""
     s = scan.scheme_of(path)
     if s not in ("s3", "s3a", "r2", "gs", "gcs"):
         return None
@@ -119,7 +119,7 @@ _DOC_MD = (
     "| `aws_cur2` | AWS CUR 2.0 / Data Exports (Parquet, CSV), legacy CUR headers |\n"
     "| `azure` / `azure_amortized` | Azure cost-details exports (actual / amortized) |\n"
     "| `gcp` | BigQuery billing export dumped to Parquet / JSON / CSV |\n"
-    "| `focus` | native FOCUS 1.0–1.4 files from any provider |\n\n"
+    "| `focus` | native FOCUS 1.0-1.4 files from any provider |\n\n"
     "Files stream one row group at a time; projection and filters on ChargePeriodStart, BillingPeriodStart, "
     "BillingAccountId and SubAccountId reach the Parquet reader. The mapping per source is in "
     "`focus.main.provider_map`."
@@ -142,7 +142,8 @@ class Focus(TableFunctionGenerator[FocusArgs, ScanCursor]):
             **object_tags(
                 title="Billing Exports as FOCUS Rows",
                 category="ingest",
-                keywords="focus, finops, cloud cost, billing export, aws cur, cur 2.0, azure cost export, gcp billing export, "
+                keywords="focus, finops, cloud cost, billing export, aws cur, cur 2.0, azure cost "
+                "export, gcp billing export, "
                 "multi-cloud, cost and usage",
                 doc_llm=_DOC_LLM,
                 doc_md=_DOC_MD,

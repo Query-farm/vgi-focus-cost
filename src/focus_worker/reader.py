@@ -17,12 +17,12 @@ from dataclasses import dataclass
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.dataset as ds
 from vgi.table_filter_pushdown import ComparisonOp, ConstantFilter, InFilter
 from vgi_rpc import ArrowSerializableDataclass
 
 from . import scan
+from .convert import pc
 from .sources import MAPPERS, MapOptions, Mapper, map_batch, output_schema, resolve_source
 from .sources.focus import extra_fields
 
@@ -102,7 +102,7 @@ def make_plan(req: ScanRequest) -> Plan:
 
 
 def new_cursor() -> ScanCursor:
-    """A cursor at the start of the scan."""
+    """Return a cursor at the start of the scan."""
     return ScanCursor(scan_id=uuid.uuid4().hex)
 
 
@@ -126,7 +126,8 @@ def _raw_literal(value: Any, raw_type: pa.DataType) -> pa.Scalar[Any] | None:
             value = value.replace(tzinfo=None)
         elif value.tzinfo is None:
             value = value.replace(tzinfo=dt.UTC)
-        return pa.scalar(value, type=raw_type)
+        ts: pa.Scalar[Any] = pa.scalar(value, type=raw_type)
+        return ts
     if pa.types.is_string(raw_type) or pa.types.is_large_string(raw_type):
         return pa.scalar(value, type=raw_type) if isinstance(value, str) else None
     return None
@@ -145,7 +146,7 @@ _FILE_SOURCES: _Lru[tuple[str, str], str] = _Lru(4096)
 
 
 def mapper_for_file(plan: Plan, i: int, file_schema: pa.Schema) -> Mapper:
-    """The mapper for file ``i``: the forced source, or per-file detection for 'auto'.
+    """Return the mapper for file ``i``: the forced source, or per-file detection for 'auto'.
 
     Detecting per file lets one glob cover a folder that mixes AWS, Azure, GCP and
     FOCUS exports; every mapped source shares the same FOCUS output schema.

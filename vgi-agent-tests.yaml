@@ -1,16 +1,18 @@
 # Private graders for the public vgi.agent_test_tasks in the worker's catalog metadata.
-# `vgi-lint lint --ai` runs an agent on each prompt and grades it with check_sql.
+# `vgi-lint lint --ai` runs an agent on each prompt and grades it with reference_sql/check_sql.
 # See https://github.com/Query-farm/vgi-lint-check (VGI920).
 tasks:
-  - name: formal_greeting
-    reference_sql: SELECT focus.main.greet('Grace', 'formal') AS greeting
-  - name: sum_of_squares
-    reference_sql: SELECT sum(squared) AS total FROM focus.main.sequence_table(10)
-  - name: stepped_sequence
-    reference_sql: SELECT n FROM focus.main.sequence_table(4, step := 5) ORDER BY n
-  # Reads the public demo API (https://vgi-starter-api.query-farm.services/v1).
-  - name: items_per_category
-    check_sql: >-
-      SELECT count(*) = 3 AND sum(items) = 25
-      FROM (SELECT category, count(*) AS items
-            FROM focus.main.fetch_items('https://vgi-starter-api.query-farm.services/v1') GROUP BY category)
+  - name: aws_effective_cost_inputs
+    reference_sql: >-
+      SELECT unnest(source_columns) AS source_column FROM focus.main.provider_map
+      WHERE source = 'aws_cur2' AND focus_column = 'EffectiveCost' ORDER BY source_column
+  - name: ec2_category
+    reference_sql: >-
+      SELECT focus.main.focus_service_category('aws', 'AmazonRDS') AS category,
+             focus.main.focus_service_subcategory('aws', 'AmazonRDS') AS subcategory
+  - name: mandatory_columns_1_2
+    reference_sql: >-
+      SELECT count(*) AS mandatory FROM focus.main.focus_columns
+      WHERE spec_version = '1.2' AND feature_level = 'Mandatory'
+  - name: exact_ratio
+    reference_sql: SELECT focus.main.focus_divide(10, 3) AS ratio

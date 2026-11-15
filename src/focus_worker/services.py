@@ -170,7 +170,12 @@ _GCP = [
     ("Identity Platform", "Identity Platform", "Identity", "Identity and Access Management"),
     ("Vertex AI", "Vertex AI", "AI and Machine Learning", "AI Platforms"),
     ("Gemini API", "Gemini API", "AI and Machine Learning", "Generative AI"),
-    ("Cloud Natural Language API", "Cloud Natural Language API", "AI and Machine Learning", "Natural Language Processing"),
+    (
+        "Cloud Natural Language API",
+        "Cloud Natural Language API",
+        "AI and Machine Learning",
+        "Natural Language Processing",
+    ),
 ]
 
 SERVICES: tuple[Service, ...] = tuple(

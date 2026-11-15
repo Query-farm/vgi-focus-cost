@@ -96,7 +96,7 @@ def all_columns() -> tuple[ColumnSpec, ...]:
 
 @cache
 def columns_for(version: str) -> tuple[ColumnSpec, ...]:
-    """The columns of one spec version, alphabetical (the spec's own order)."""
+    """Return the columns of one spec version, alphabetical (the spec's own order)."""
     if version not in SPEC_VERSIONS:
         raise ValueError(f"unsupported FOCUS version {version!r}; expected one of {', '.join(SPEC_VERSIONS)}")
     return tuple(c for c in all_columns() if c.spec_version == version)
@@ -114,8 +114,10 @@ def all_column_names() -> frozenset[str]:
     return frozenset(c.column_name for c in all_columns())
 
 
-def arrow_type(col: ColumnSpec | str, money_scale: int = DEFAULT_MONEY_SCALE, data_type: str | None = None) -> pa.DataType:
-    """The Arrow (and so DuckDB) type this worker uses for a FOCUS column."""
+def arrow_type(
+    col: ColumnSpec | str, money_scale: int = DEFAULT_MONEY_SCALE, data_type: str | None = None
+) -> pa.DataType:
+    """Return the Arrow (and so DuckDB) type this worker uses for a FOCUS column."""
     name = col if isinstance(col, str) else col.column_name
     dt = data_type if data_type is not None else ("" if isinstance(col, str) else col.data_type)
     if name in MONEY_COLUMNS:
@@ -132,7 +134,7 @@ def arrow_type(col: ColumnSpec | str, money_scale: int = DEFAULT_MONEY_SCALE, da
 
 
 def duckdb_type_name(t: pa.DataType) -> str:
-    """The DuckDB spelling of the types this worker emits."""
+    """Return the DuckDB spelling of the types this worker emits."""
     if pa.types.is_decimal(t):
         return f"DECIMAL({t.precision},{t.scale})"
     if pa.types.is_timestamp(t):

@@ -20,15 +20,19 @@ from decimal import Decimal
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
 from .. import services
-from ..convert import lookup, map_values, to_decimal
+from ..convert import Arr, lookup, map_values, pc, to_decimal
 from .base import Rule, Src, isin, money_add, when, zero_money
 from .common import MapOptions, Mapper
 
-COST_TYPES = {"regular": "Usage", "tax": "Tax", "adjustment": "Adjustment", "rounding_error": "Adjustment",
-              "rounding error": "Adjustment"}
+COST_TYPES = {
+    "regular": "Usage",
+    "tax": "Tax",
+    "adjustment": "Adjustment",
+    "rounding_error": "Adjustment",
+    "rounding error": "Adjustment",
+}
 CUD_TYPES = {"COMMITTED_USAGE_DISCOUNT": "Usage", "COMMITTED_USAGE_DISCOUNT_DOLLAR_BASE": "Spend"}
 
 RULES: tuple[Rule, ...] = (
@@ -46,18 +50,27 @@ RULES: tuple[Rule, ...] = (
     Rule("ChargePeriodStart", ("usage_start_time",), "usage_start_time", direct="usage_start_time"),
     Rule("ChargePeriodEnd", ("usage_end_time",), "usage_end_time", direct="usage_end_time"),
     Rule("ChargeCategory", ("cost_type",), "cost_type through charge_type_map (regular -> Usage, tax -> Tax ...)"),
-    Rule("ChargeClass", ("usage_start_time", "invoice.month"),
-         "'Correction' when the charge period starts before the billing period, else NULL"),
+    Rule(
+        "ChargeClass",
+        ("usage_start_time", "invoice.month"),
+        "'Correction' when the charge period starts before the billing period, else NULL",
+    ),
     Rule("ChargeDescription", ("sku.description",), "sku.description"),
-    Rule("ChargeFrequency", ("cost_type", "subscription.instance_id"),
-         "'Recurring' for subscription rows, else 'Usage-Based'"),
+    Rule(
+        "ChargeFrequency",
+        ("cost_type", "subscription.instance_id"),
+        "'Recurring' for subscription rows, else 'Usage-Based'",
+    ),
     Rule("CommitmentDiscountId", ("credits",), "id of the row's committed-use-discount credit"),
     Rule("CommitmentDiscountName", ("credits",), "full_name (else name) of that credit"),
     Rule("CommitmentDiscountType", ("credits",), "'Committed Use Discount' when a CUD credit applies"),
     Rule("CommitmentDiscountCategory", ("credits",), "'Usage' (resource-based CUD) or 'Spend' (spend-based CUD)"),
     Rule("CommitmentDiscountStatus", ("credits",), "'Used' when a CUD credit applies"),
-    Rule("PricingCategory", ("credits", "sku.description", "cost_type"),
-         "'Committed' with a CUD credit, 'Dynamic' for Spot/Preemptible SKUs, else 'Standard' (NULL for tax)"),
+    Rule(
+        "PricingCategory",
+        ("credits", "sku.description", "cost_type"),
+        "'Committed' with a CUD credit, 'Dynamic' for Spot/Preemptible SKUs, else 'Standard' (NULL for tax)",
+    ),
     Rule("PricingQuantity", ("usage.amount_in_pricing_units",), "usage.amount_in_pricing_units"),
     Rule("PricingUnit", ("usage.pricing_unit",), "usage.pricing_unit"),
     Rule("ConsumedQuantity", ("usage.amount",), "usage.amount on Usage rows"),
@@ -69,7 +82,11 @@ RULES: tuple[Rule, ...] = (
     Rule("RegionId", ("location.region",), "location.region"),
     Rule("RegionName", ("location.region",), "location.region"),
     Rule("AvailabilityZone", ("location.zone",), "location.zone"),
-    Rule("ResourceId", ("resource.global_name", "resource.name"), "resource.global_name, else resource.name (detailed export)"),
+    Rule(
+        "ResourceId",
+        ("resource.global_name", "resource.name"),
+        "resource.global_name, else resource.name (detailed export)",
+    ),
     Rule("ResourceName", ("resource.name",), "resource.name"),
     Rule("ServiceName", ("service.description",), "service.description, else 'Google Cloud'"),
     Rule("ServiceCategory", ("service.description",), "service_map on service.description, else 'Other'"),
@@ -118,17 +135,17 @@ def _credit_rows(src: Src, n: int) -> list[list[dict[str, Any]] | None]:
     return arr.to_pylist()  # type: ignore[no-any-return]
 
 
-def map_gcp(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
+def map_gcp(src: Src, opts: MapOptions) -> dict[str, Arr]:
     """Map one billing-export batch to canonical FOCUS columns."""
     s = opts.money_scale
     n = src.n
     cost = src.money(s, "cost")
-    credits = _credit_rows(src, n)
+    credit_rows = _credit_rows(src, n)
     totals: list[str | None] = []
     cud_id: list[str | None] = []
     cud_name: list[str | None] = []
     cud_cat: list[str | None] = []
-    for row in credits:
+    for row in credit_rows:
         total = Decimal(0)
         cid = cname = ccat = None
         for c in row or ():
@@ -156,8 +173,11 @@ def map_gcp(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
     sku_desc = src.string("sku.description")
     spot = pc.fill_null(pc.match_substring_regex(sku_desc, "(?i)spot|preemptible"), False)
     none = src.null(pa.string())
-    pricing = when(isin(category, ("Usage", "Purchase")),
-                   when(has_cud, src.const("Committed"), when(spot, src.const("Dynamic"), src.const("Standard"))), none)
+    pricing = when(
+        isin(category, ("Usage", "Purchase")),
+        when(has_cud, src.const("Committed"), when(spot, src.const("Dynamic"), src.const("Standard"))),
+        none,
+    )
     subscription = pc.is_valid(src.string("subscription.instance_id"))
     month = src.get("invoice.month")
     month_arr = month if month is not None else src.null(pa.string())

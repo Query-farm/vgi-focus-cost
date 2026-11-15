@@ -22,10 +22,9 @@ from __future__ import annotations
 import datetime as dt
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
 from .. import services
-from ..convert import lookup, map_values
+from ..convert import Arr, lookup, map_values, pc
 from .base import Rule, Src, isin, money_mul, when, zero_money
 from .common import MapOptions, Mapper
 
@@ -50,10 +49,16 @@ COMMITMENT_MODELS = ("Reservation", "SavingsPlan")
 UNUSED_TYPES = ("UnusedReservation", "UnusedSavingsPlan")
 
 _SHARED_RULES: tuple[Rule, ...] = (
-    Rule("ListCost", ("PaygCostInBillingCurrency", "PayGPrice", "Quantity", *COST),
-         "PaygCostInBillingCurrency, else PayGPrice x Quantity, else the row cost"),
-    Rule("ContractedCost", ("UnitPrice", "Quantity", "ExchangeRatePricingToBilling", *COST),
-         "UnitPrice x Quantity x ExchangeRatePricingToBilling (exact, half-even), else the row cost"),
+    Rule(
+        "ListCost",
+        ("PaygCostInBillingCurrency", "PayGPrice", "Quantity", *COST),
+        "PaygCostInBillingCurrency, else PayGPrice x Quantity, else the row cost",
+    ),
+    Rule(
+        "ContractedCost",
+        ("UnitPrice", "Quantity", "ExchangeRatePricingToBilling", *COST),
+        "UnitPrice x Quantity x ExchangeRatePricingToBilling (exact, half-even), else the row cost",
+    ),
     Rule("ListUnitPrice", ("PayGPrice", "MarketPrice"), "PayGPrice, else MarketPrice"),
     Rule("ContractedUnitPrice", ("UnitPrice",), "UnitPrice"),
     Rule("BillingAccountId", ("BillingAccountId",), "BillingAccountId", direct="BillingAccountId"),
@@ -64,22 +69,43 @@ _SHARED_RULES: tuple[Rule, ...] = (
     Rule("BillingPeriodEnd", ("BillingPeriodEndDate",), "BillingPeriodEndDate + 1 day (Azure's end date is inclusive)"),
     Rule("ChargePeriodStart", ("Date", "UsageDateTime"), "Date (MM/DD/YYYY or ISO) at 00:00 UTC"),
     Rule("ChargePeriodEnd", ("Date", "UsageDateTime"), "ChargePeriodStart + 1 day (daily granularity)"),
-    Rule("ChargeCategory", ("ChargeType",), "ChargeType through charge_type_map",
-         "UnusedReservation/UnusedSavingsPlan are Usage rows with CommitmentDiscountStatus 'Unused'."),
-    Rule("ChargeClass", ("Date", "BillingPeriodStartDate"),
-         "'Correction' when the charge period starts before the billing period, else NULL"),
+    Rule(
+        "ChargeCategory",
+        ("ChargeType",),
+        "ChargeType through charge_type_map",
+        "UnusedReservation/UnusedSavingsPlan are Usage rows with CommitmentDiscountStatus 'Unused'.",
+    ),
+    Rule(
+        "ChargeClass",
+        ("Date", "BillingPeriodStartDate"),
+        "'Correction' when the charge period starts before the billing period, else NULL",
+    ),
     Rule("ChargeDescription", ("ProductName", "MeterName"), "ProductName, else MeterName"),
-    Rule("ChargeFrequency", ("Frequency",), "Frequency: UsageBased/OneTime/Recurring -> Usage-Based/One-Time/Recurring"),
-    Rule("CommitmentDiscountId", ("benefitId", "ReservationId", "PricingModel", "ChargeType"),
-         "benefitId, else ReservationId, on commitment rows"),
-    Rule("CommitmentDiscountName", ("benefitName", "ReservationName", "PricingModel", "ChargeType"),
-         "benefitName, else ReservationName, on commitment rows"),
+    Rule(
+        "ChargeFrequency", ("Frequency",), "Frequency: UsageBased/OneTime/Recurring -> Usage-Based/One-Time/Recurring"
+    ),
+    Rule(
+        "CommitmentDiscountId",
+        ("benefitId", "ReservationId", "PricingModel", "ChargeType"),
+        "benefitId, else ReservationId, on commitment rows",
+    ),
+    Rule(
+        "CommitmentDiscountName",
+        ("benefitName", "ReservationName", "PricingModel", "ChargeType"),
+        "benefitName, else ReservationName, on commitment rows",
+    ),
     Rule("CommitmentDiscountType", ("PricingModel",), "'Reservation' or 'Savings Plan' from PricingModel"),
     Rule("CommitmentDiscountCategory", ("PricingModel",), "'Usage' for reservations, 'Spend' for savings plans"),
-    Rule("CommitmentDiscountStatus", ("ChargeType", "PricingModel"),
-         "'Unused' for UnusedReservation/UnusedSavingsPlan, 'Used' for commitment-priced Usage"),
-    Rule("PricingCategory", ("PricingModel", "ChargeType"),
-         "OnDemand -> Standard, Spot -> Dynamic, Reservation/SavingsPlan -> Committed; NULL for Tax"),
+    Rule(
+        "CommitmentDiscountStatus",
+        ("ChargeType", "PricingModel"),
+        "'Unused' for UnusedReservation/UnusedSavingsPlan, 'Used' for commitment-priced Usage",
+    ),
+    Rule(
+        "PricingCategory",
+        ("PricingModel", "ChargeType"),
+        "OnDemand -> Standard, Spot -> Dynamic, Reservation/SavingsPlan -> Committed; NULL for Tax",
+    ),
     Rule("PricingQuantity", ("Quantity",), "Quantity"),
     Rule("PricingUnit", ("UnitOfMeasure",), "UnitOfMeasure"),
     Rule("ConsumedQuantity", ("Quantity",), "Quantity on Usage rows that are not Unused"),
@@ -93,13 +119,29 @@ _SHARED_RULES: tuple[Rule, ...] = (
     Rule("RegionName", ("MeterRegion", "ResourceLocation"), "MeterRegion, else ResourceLocation"),
     Rule("AvailabilityZone", ("AvailabilityZone",), "AvailabilityZone"),
     Rule("ResourceId", ("ResourceId", "InstanceId"), "ResourceId (or InstanceId)"),
-    Rule("ResourceName", ("ResourceName", "ResourceId", "InstanceId"), "ResourceName, else the last segment of ResourceId"),
+    Rule(
+        "ResourceName",
+        ("ResourceName", "ResourceId", "InstanceId"),
+        "ResourceName, else the last segment of ResourceId",
+    ),
     Rule("ResourceType", ("ResourceId", "InstanceId"), "'<namespace>/<type>' parsed from the ResourceId"),
-    Rule("ServiceName", ("MeterCategory", "ConsumedService", "ProductName", "ServiceFamily"),
-         "service_map name for MeterCategory, else MeterCategory, ConsumedService, ProductName, ServiceFamily, 'Microsoft'",
-         "Rows with no meter (rounding adjustments) fall back so ServiceName is never NULL."),
-    Rule("ServiceCategory", ("MeterCategory", "ServiceFamily"), "service_map on MeterCategory, else on ServiceFamily, else 'Other'"),
-    Rule("ServiceSubcategory", ("MeterCategory", "ServiceFamily"), "service_map on MeterCategory, else 'Other (<category>)'"),
+    Rule(
+        "ServiceName",
+        ("MeterCategory", "ConsumedService", "ProductName", "ServiceFamily"),
+        "service_map name for MeterCategory, else MeterCategory, ConsumedService, ProductName, "
+        "ServiceFamily, 'Microsoft'",
+        "Rows with no meter (rounding adjustments) fall back so ServiceName is never NULL.",
+    ),
+    Rule(
+        "ServiceCategory",
+        ("MeterCategory", "ServiceFamily"),
+        "service_map on MeterCategory, else on ServiceFamily, else 'Other'",
+    ),
+    Rule(
+        "ServiceSubcategory",
+        ("MeterCategory", "ServiceFamily"),
+        "service_map on MeterCategory, else 'Other (<category>)'",
+    ),
     Rule("SkuId", ("ProductId",), "ProductId"),
     Rule("SkuPriceId", ("MeterId",), "MeterId"),
     Rule("SkuMeter", ("MeterName",), "MeterName"),
@@ -115,17 +157,33 @@ _SHARED_RULES: tuple[Rule, ...] = (
 
 ACTUAL_RULES = (
     Rule("BilledCost", COST, "CostInBillingCurrency (actual-cost export)"),
-    Rule("EffectiveCost", (*COST, "ChargeType", "PricingModel"),
-         "the row cost; 0 for reservation/savings-plan Purchase and Refund rows (not amortized in an actual-cost export)"),
+    Rule(
+        "EffectiveCost",
+        (*COST, "ChargeType", "PricingModel"),
+        "the row cost; 0 for reservation/savings-plan Purchase and Refund rows (not amortized in an "
+        "actual-cost export)",
+    ),
     *_SHARED_RULES,
 )
 AMORTIZED_RULES = (
-    Rule("BilledCost", (*COST, "ChargeType", "PricingModel"),
-         "the row cost, but 0 for commitment-covered Usage and Unused* rows (billed through the purchase)"),
-    Rule("EffectiveCost", (*COST, "ChargeType", "PricingModel"),
-         "CostInBillingCurrency (amortized-cost export); 0 for commitment Purchase and Refund rows"),
+    Rule(
+        "BilledCost",
+        (*COST, "ChargeType", "PricingModel"),
+        "the row cost, but 0 for commitment-covered Usage and Unused* rows (billed through the purchase)",
+    ),
+    Rule(
+        "EffectiveCost",
+        (*COST, "ChargeType", "PricingModel"),
+        "CostInBillingCurrency (amortized-cost export); 0 for commitment Purchase and Refund rows",
+    ),
     *_SHARED_RULES,
 )
+
+
+def _known(service: str | None, attr: str) -> str | None:
+    """Return the service_map ``attr`` for a known Azure MeterCategory, else NULL."""
+    hit = services.find("azure", service) if service else None
+    return None if hit is None else str(getattr(hit, attr))
 
 
 def _region_id(v: str | None) -> str | None:
@@ -140,10 +198,10 @@ def _resource_type(rid: str | None) -> str | None:
     if "providers" not in low:
         return None
     i = len(low) - 1 - low[::-1].index("providers")
-    tail = parts[i + 1:]
+    tail = parts[i + 1 :]
     if len(tail) < 2:
         return None
-    types = [tail[0]] + tail[1::2]
+    types = [tail[0], *tail[1::2]]
     return "/".join(types).lower()
 
 
@@ -154,11 +212,11 @@ def _last_segment(rid: str | None) -> str | None:
     return seg or None
 
 
-def _plus_one_day(ts: pa.Array) -> pa.Array:
+def _plus_one_day(ts: Arr) -> Arr:
     return pc.add(ts, pa.scalar(dt.timedelta(days=1), pa.duration("us")))
 
 
-def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
+def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, Arr]:
     s = opts.money_scale
     n = src.n
     cost = src.money(s, *COST)
@@ -195,12 +253,17 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
     cd_name = when(on_commit_row, pc.coalesce(src.string("benefitName"), src.string("ReservationName")), none)
     is_ri = pc.fill_null(pc.equal(model, "Reservation"), False)
     is_sp = pc.fill_null(pc.equal(model, "SavingsPlan"), False)
-    cd_type = when(on_commit_row, when(is_ri, src.const("Reservation"), when(is_sp, src.const("Savings Plan"), none)), none)
+    cd_type = when(
+        on_commit_row, when(is_ri, src.const("Reservation"), when(is_sp, src.const("Savings Plan"), none)), none
+    )
     cd_cat = when(on_commit_row, when(is_ri, src.const("Usage"), when(is_sp, src.const("Spend"), none)), none)
     cd_status = when(unused, src.const("Unused"), when(pc.and_(usage, commitment), src.const("Used"), none))
     category = lookup(ctype, CHARGE_TYPES, pa.string(), "Adjustment")
-    pricing_cat = when(isin(category, ("Usage", "Purchase")),
-                       pc.coalesce(lookup(model, PRICING_MODELS, pa.string(), "Other"), src.const("Standard")), none)
+    pricing_cat = when(
+        isin(category, ("Usage", "Purchase")),
+        pc.coalesce(lookup(model, PRICING_MODELS, pa.string(), "Other"), src.const("Standard")),
+        none,
+    )
     meter_cat = src.string("MeterCategory")
     family = src.string("ServiceFamily")
     service_key = pc.coalesce(meter_cat, family)
@@ -215,8 +278,16 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
     def _subcat(v: str | None) -> str | None:
         return services.subcategory("azure", v) if v else "Other (Other)"
 
-    category_by_meter = map_values(meter_cat, lambda v: services.find("azure", v).category if v and services.find("azure", v) else None, pa.string())
-    sub_by_meter = map_values(meter_cat, lambda v: services.find("azure", v).subcategory if v and services.find("azure", v) else None, pa.string())
+    category_by_meter = map_values(
+        meter_cat,
+        lambda v: _known(v, "category"),
+        pa.string(),
+    )
+    sub_by_meter = map_values(
+        meter_cat,
+        lambda v: _known(v, "subcategory"),
+        pa.string(),
+    )
     rid = src.string("ResourceId", "InstanceId")
     location = src.string("ResourceLocation")
     return {
@@ -258,8 +329,13 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
         "ResourceId": rid,
         "ResourceName": pc.coalesce(src.string("ResourceName"), map_values(rid, _last_segment, pa.string())),
         "ResourceType": map_values(rid, _resource_type, pa.string()),
-        "ServiceName": pc.coalesce(map_values(meter_cat, _svc_name, pa.string()), src.string("ConsumedService"),
-                                   src.string("ProductName"), family, src.const("Microsoft")),
+        "ServiceName": pc.coalesce(
+            map_values(meter_cat, _svc_name, pa.string()),
+            src.string("ConsumedService"),
+            src.string("ProductName"),
+            family,
+            src.const("Microsoft"),
+        ),
         "ServiceCategory": pc.coalesce(category_by_meter, map_values(family, _cat, pa.string(), skip_null=False)),
         "ServiceSubcategory": pc.coalesce(sub_by_meter, map_values(service_key, _subcat, pa.string(), skip_null=False)),
         "SkuId": src.string("ProductId"),
@@ -275,12 +351,12 @@ def _map(src: Src, opts: MapOptions, amortized: bool) -> dict[str, pa.Array]:
     }
 
 
-def map_actual(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
+def map_actual(src: Src, opts: MapOptions) -> dict[str, Arr]:
     """Map an actual-cost export batch."""
     return _map(src, opts, amortized=False)
 
 
-def map_amortized(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
+def map_amortized(src: Src, opts: MapOptions) -> dict[str, Arr]:
     """Map an amortized-cost export batch."""
     return _map(src, opts, amortized=True)
 

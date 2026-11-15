@@ -15,7 +15,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from ..convert import to_string
+from ..convert import Arr, to_string
 from ..spec import EXTENSION_NAMES, MAP_COLUMNS, MONEY_COLUMNS, UNIT_PRICE_COLUMNS, all_columns
 from .base import Rule, Src
 from .common import MapOptions, Mapper
@@ -65,7 +65,7 @@ def _rules() -> tuple[Rule, ...]:
 RULES = _rules()
 
 
-def map_focus(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
+def map_focus(src: Src, opts: MapOptions) -> dict[str, Arr]:
     """Convert each FOCUS column present in the batch to its worker type."""
     s = opts.money_scale
     cols: dict[str, Any] = {}
@@ -89,12 +89,16 @@ def map_focus(src: Src, opts: MapOptions) -> dict[str, pa.Array]:
         if ext.lower() in lower:
             cols[ext] = to_string(src.get(lower[ext.lower()]), src.n)
     for name in src.batch.schema.names:
-        if name.lower().startswith("x_") and name not in cols and name.lower() not in {e.lower() for e in EXTENSION_NAMES}:
+        if (
+            name.lower().startswith("x_")
+            and name not in cols
+            and name.lower() not in {e.lower() for e in EXTENSION_NAMES}
+        ):
             cols[name] = _plain(src.get(name))
     return cols
 
 
-def _plain(arr: pa.Array | None) -> pa.Array | None:
+def _plain(arr: Arr | None) -> Arr | None:
     """Nested / binary extension values as JSON text; others unchanged."""
     if arr is None:
         return None
@@ -107,7 +111,7 @@ def _plain(arr: pa.Array | None) -> pa.Array | None:
 
 
 def extra_fields(schema: pa.Schema) -> list[pa.Field[Any]]:
-    """The file's own ``x_`` columns, appended to the output schema at bind time.
+    """Return the file's own ``x_`` columns, appended to the output schema at bind time.
 
     Nested or binary types are emitted as text; everything else keeps its type.
     """
@@ -126,8 +130,14 @@ def extra_fields(schema: pa.Schema) -> list[pa.Field[Any]]:
             t = pa.string()
         if pa.types.is_large_string(t) or pa.types.is_string_view(t):
             t = pa.string()
-        out.append(pa.field(f.name, t, nullable=True,
-                            metadata={b"comment": b"Provider extension column carried through from the source file."}))
+        out.append(
+            pa.field(
+                f.name,
+                t,
+                nullable=True,
+                metadata={b"comment": b"Provider extension column carried through from the source file."},
+            )
+        )
     return out
 
 

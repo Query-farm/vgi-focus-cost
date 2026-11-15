@@ -10,9 +10,7 @@ from . import aws, azure, focus, gcp
 from .base import Rule, Src
 from .common import MapOptions, Mapper, apply_generic_rules, assemble, output_schema
 
-MAPPERS: dict[str, Mapper] = {
-    m.token: m for m in (aws.MAPPER, azure.ACTUAL, azure.AMORTIZED, gcp.MAPPER, focus.MAPPER)
-}
+MAPPERS: dict[str, Mapper] = {m.token: m for m in (aws.MAPPER, azure.ACTUAL, azure.AMORTIZED, gcp.MAPPER, focus.MAPPER)}
 SOURCE_TOKENS = tuple(MAPPERS)
 SOURCE_CHOICES = ("auto", *SOURCE_TOKENS)
 
@@ -35,7 +33,7 @@ def detect(names: Iterable[str]) -> str | None:
 
 
 def resolve_source(source: str, names: Iterable[str]) -> str:
-    """The concrete source token: ``source`` itself, or the detected one for 'auto'."""
+    """Return the concrete source token: ``source`` itself, or the detected one for 'auto'."""
     if source != "auto":
         if source not in MAPPERS:
             raise ValueError(f"unknown source {source!r}; expected one of {', '.join(SOURCE_CHOICES)}")

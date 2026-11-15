@@ -15,7 +15,13 @@ from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 import pyarrow as pa
-import pyarrow.compute as pc
+import pyarrow.compute as _pc
+
+# pyarrow-stubs types compute results too narrowly for kernels chained over
+# arbitrary export column types; arrays are typed loosely throughout.
+Arr = Any
+_nulls: Any = pa.nulls
+pc: Any = _pc  # the compute module, typed loosely for the same reason
 
 UTC_TS = pa.timestamp("us", tz="UTC")
 TAGS_TYPE = pa.map_(pa.string(), pa.string())
@@ -26,12 +32,12 @@ class ConversionError(ValueError):
     """A source value could not be converted to its FOCUS type."""
 
 
-def nulls(n: int, type_: pa.DataType) -> pa.Array:
-    """An all-NULL array of ``n`` values."""
-    return pa.nulls(n, type=type_)
+def nulls(n: int, type_: pa.DataType) -> Arr:
+    """Return an all-NULL array of ``n`` values."""
+    return _nulls(n, type=type_)
 
 
-def _blank_to_null(arr: pa.Array) -> pa.Array:
+def _blank_to_null(arr: Arr) -> Arr:
     """Trim strings and turn empty strings and the literal text ``NULL`` into NULL.
 
     Exports written by databases (the FOCUS sample data, BigQuery CSV dumps) spell
@@ -43,7 +49,7 @@ def _blank_to_null(arr: pa.Array) -> pa.Array:
     return pc.if_else(blank, pa.scalar(None, pa.string()), trimmed)
 
 
-def to_string(arr: pa.Array | pa.ChunkedArray | None, n: int) -> pa.Array:
+def to_string(arr: Arr | None, n: int) -> Arr:
     """Any column as VARCHAR; blank strings become NULL."""
     if arr is None:
         return nulls(n, pa.string())
@@ -59,13 +65,13 @@ def to_string(arr: pa.Array | pa.ChunkedArray | None, n: int) -> pa.Array:
     return _blank_to_null(arr)
 
 
-def _combine(arr: pa.Array | pa.ChunkedArray) -> pa.Array:
+def _combine(arr: Arr) -> Arr:
     if isinstance(arr, pa.ChunkedArray):
         return arr.combine_chunks() if arr.num_chunks != 1 else arr.chunk(0)
     return arr
 
 
-def to_decimal(arr: pa.Array | pa.ChunkedArray | None, n: int, precision: int, scale: int, *, what: str) -> pa.Array:
+def to_decimal(arr: Arr | None, n: int, precision: int, scale: int, *, what: str) -> Arr:
     """Exact conversion of a numeric or textual column to ``DECIMAL(precision, scale)``.
 
     Doubles are converted through their shortest round-trip text, so ``0.1`` stays
@@ -95,7 +101,7 @@ def to_decimal(arr: pa.Array | pa.ChunkedArray | None, n: int, precision: int, s
         raise ConversionError(f"{what}: cannot convert {sample!r} to DECIMAL({precision},{scale}): {err}") from err
 
 
-def _first_bad_decimal(arr: pa.Array) -> Any:
+def _first_bad_decimal(arr: Arr) -> Any:
     from decimal import Decimal, InvalidOperation
 
     for v in arr.to_pylist():
@@ -121,7 +127,7 @@ _TS_FORMATS = (
 )
 
 
-def to_timestamp(arr: pa.Array | pa.ChunkedArray | None, n: int, *, what: str) -> pa.Array:
+def to_timestamp(arr: Arr | None, n: int, *, what: str) -> Arr:
     """Convert dates, timestamps (any zone, any unit) or text to ``TIMESTAMPTZ`` in UTC.
 
     Text with an explicit offset is honoured; text without one is taken as UTC.
@@ -152,25 +158,23 @@ def to_timestamp(arr: pa.Array | pa.ChunkedArray | None, n: int, *, what: str) -
     raise ConversionError(f"{what}: cannot parse {sample!r} as a timestamp")
 
 
-def _ts_iso_tz(text: pa.Array) -> pa.Array:
+def _ts_iso_tz(text: Arr) -> Arr:
     return pc.cast(text, UTC_TS)
 
 
-def _ts_iso_naive(text: pa.Array) -> pa.Array:
+def _ts_iso_naive(text: Arr) -> Arr:
     return pc.assume_timezone(pc.cast(text, pa.timestamp("us")), "UTC")
 
 
-def _strptime(fmt: str) -> Callable[[pa.Array], pa.Array]:
-    def parse(text: pa.Array) -> pa.Array:
+def _strptime(fmt: str) -> Callable[[Arr], Arr]:
+    def parse(text: Arr) -> Arr:
         parsed = pc.strptime(text, format=fmt, unit="us", error_is_null=False)
         return pc.assume_timezone(parsed, "UTC")
 
     return parse
 
 
-def map_values(
-    arr: pa.Array, fn: Callable[[Any], Any], out_type: pa.DataType, *, skip_null: bool = True
-) -> pa.Array:
+def map_values(arr: Arr, fn: Callable[[Any], Any], out_type: pa.DataType, *, skip_null: bool = True) -> Arr:
     """Apply a Python function to each *distinct* value, then expand by index.
 
     Export columns such as charge types, service codes and tag strings have few
@@ -182,7 +186,7 @@ def map_values(
     if pa.types.is_null(arr.type):
         return pa.array([None if skip_null else fn(None)] * len(arr), type=out_type)
     enc = arr if pa.types.is_dictionary(arr.type) else pc.dictionary_encode(arr)
-    enc = cast("pa.DictionaryArray", enc)
+    enc = cast("pa.DictionaryArray[Any, Any]", enc)
     mapped = [fn(v) for v in enc.dictionary.to_pylist()]
     values = pa.array(mapped, type=out_type)
     taken = values.take(enc.indices)
@@ -193,10 +197,14 @@ def map_values(
     return taken
 
 
-def lookup(arr: pa.Array, table: Mapping[str, Any], out_type: pa.DataType, default: Any = None) -> pa.Array:
+def lookup(arr: Arr, table: Mapping[str, Any], out_type: pa.DataType, default: Any = None) -> Arr:
     """Map distinct string values through ``table``; unmatched values get ``default``."""
-    return map_values(to_string(arr, len(arr)), lambda v: table.get(v, default) if v is not None else default,
-                      out_type, skip_null=False)
+    return map_values(
+        to_string(arr, len(arr)),
+        lambda v: table.get(v, default) if v is not None else default,
+        out_type,
+        skip_null=False,
+    )
 
 
 def _tags_from_text(value: str | None) -> list[tuple[str, str]] | None:
@@ -216,7 +224,7 @@ def _tags_from_text(value: str | None) -> list[tuple[str, str]] | None:
     return [(str(k), v if isinstance(v, str) else json.dumps(v)) for k, v in obj.items()]
 
 
-def to_tags(arr: pa.Array | pa.ChunkedArray | None, n: int, *, key_transform: Callable[[str], str] | None = None) -> pa.Array:
+def to_tags(arr: Arr | None, n: int, *, key_transform: Callable[[str], str] | None = None) -> Arr:
     """Convert a tag column to ``MAP(VARCHAR, VARCHAR)``.
 
     Accepts a JSON object string (FOCUS, Azure, with or without braces), an Arrow
@@ -239,10 +247,12 @@ def to_tags(arr: pa.Array | pa.ChunkedArray | None, n: int, *, key_transform: Ca
                 continue
             rows.append([(str(e.get("key")), _tag_value(e.get("value"))) for e in v if e and e.get("key") is not None])
     elif pa.types.is_struct(t):
-        rows = [None if v is None else [(k, _tag_value(x)) for k, x in v.items() if x is not None] for v in arr.to_pylist()]
+        rows = [
+            None if v is None else [(k, _tag_value(x)) for k, x in v.items() if x is not None] for v in arr.to_pylist()
+        ]
     else:
         text = to_string(arr, n)
-        enc = cast("pa.DictionaryArray", pc.dictionary_encode(text))
+        enc = cast("pa.DictionaryArray[Any, Any]", pc.dictionary_encode(text))
         parsed = [_tags_from_text(v) for v in enc.dictionary.to_pylist()]
         idx = enc.indices.to_pylist()
         rows = [None if i is None else parsed[i] for i in idx]
@@ -257,7 +267,7 @@ def _tag_value(v: Any) -> str:
     return v if isinstance(v, str) else json.dumps(v)
 
 
-def coalesce(*arrays: pa.Array) -> pa.Array:
+def coalesce(*arrays: Arr) -> Arr:
     """First non-NULL value across same-typed arrays."""
     present = [a for a in arrays if a is not None]
     if len(present) == 1:
@@ -265,6 +275,7 @@ def coalesce(*arrays: pa.Array) -> pa.Array:
     return pc.coalesce(*present)
 
 
-def const(value: Any, n: int, type_: pa.DataType = pa.string()) -> pa.Array:
-    """A constant column."""
-    return pa.array([value] * n, type=type_) if value is not None else nulls(n, type_)
+def const(value: Any, n: int, type_: pa.DataType | None = None) -> Arr:
+    """Return a constant column."""
+    t = type_ if type_ is not None else pa.string()
+    return pa.array([value] * n, type=t) if value is not None else nulls(n, t)

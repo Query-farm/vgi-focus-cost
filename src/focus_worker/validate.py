@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar
 
 import pyarrow as pa
-import pyarrow.compute as pc
 from vgi.arguments import Arg
 from vgi.invocation import BindResponse
 from vgi.metadata import FunctionExample
@@ -24,6 +23,7 @@ from vgi.table_function import BindParams, OutputCollector, ProcessParams, Table
 from vgi_rpc import ArrowSerializableDataclass
 
 from . import scan
+from .convert import Arr, pc
 from .focus_fn import FORMAT_DOC, PATH_DOC, SPEC_DOC, request_secret, store_from_resolved
 from .meta import column, object_tags, schema_columns_json
 from .reader import Plan, ScanCursor, ScanRequest, make_plan, next_batch
@@ -34,9 +34,13 @@ TIME_BUDGET_SECONDS = 5.0
 
 RESULT_SCHEMA = pa.schema(
     [
-        column("check_name", pa.string(), "Check id, e.g. 'not_null', 'allowed_values', 'column_present'.", nullable=False),
+        column(
+            "check_name", pa.string(), "Check id, e.g. 'not_null', 'allowed_values', 'column_present'.", nullable=False
+        ),
         column("column_name", pa.string(), "FOCUS column checked; NULL for file-level checks."),
-        column("severity", pa.string(), "'error' (spec MUST), 'warning' (SHOULD / likely wrong) or 'info'.", nullable=False),
+        column(
+            "severity", pa.string(), "'error' (spec MUST), 'warning' (SHOULD / likely wrong) or 'info'.", nullable=False
+        ),
         column("status", pa.string(), "'pass', 'fail' or 'not_applicable'.", nullable=False),
         column("rows_checked", pa.int64(), "Rows the check looked at.", nullable=False),
         column("failing_rows", pa.int64(), "Rows (or columns, for file-level checks) that failed.", nullable=False),
@@ -79,7 +83,7 @@ class _Counter:
     fails: int = 0
     sample: str | None = None
 
-    def add(self, rows: int, mask: pa.Array, values: pa.Array) -> None:
+    def add(self, rows: int, mask: Arr, values: Arr) -> None:
         self.rows += rows
         bad = int(pc.sum(pc.cast(pc.fill_null(mask, False), pa.int64())).as_py() or 0)
         self.fails += bad
@@ -102,8 +106,12 @@ def _present(plan: Plan) -> tuple[set[str], list[str], list[str]]:
         present = {lower[n.lower()] for n in names if n.lower() in lower}
         custom = [n for n in names if n.lower() not in lower and not n.lower().startswith("x_")]
         case = [n for n in names if n.lower() in lower and n not in focus_names]
-        bridged = {"ServiceProviderName": "PublisherName", "HostProviderName": "ProviderName",
-                   "PublisherName": "ServiceProviderName", "ProviderName": "HostProviderName"}
+        bridged = {
+            "ServiceProviderName": "PublisherName",
+            "HostProviderName": "ProviderName",
+            "PublisherName": "ServiceProviderName",
+            "ProviderName": "HostProviderName",
+        }
         present |= {k for k, v in bridged.items() if v in present}
         return present, custom, case
     provided = set(plan.mapper.rule_index) | {"ChargeClass", "ServiceProviderName", "HostProviderName"}
@@ -115,37 +123,71 @@ def _checks_for(cols: tuple[ColumnSpec, ...]) -> list[tuple[str, str | None, str
     out: list[tuple[str, str | None, str, str]] = []
     for c in cols:
         level = c.feature_level
-        out.append(("column_present", c.column_name, "error" if level == "Mandatory" else "info",
-                    f"{c.column_name} is {level} in FOCUS {c.spec_version}"))
+        out.append(
+            (
+                "column_present",
+                c.column_name,
+                "error" if level == "Mandatory" else "info",
+                f"{c.column_name} is {level} in FOCUS {c.spec_version}",
+            )
+        )
     for c in cols:
         if not c.allows_nulls:
             out.append(("not_null", c.column_name, "error", f"{c.column_name} MUST NOT be null"))
     for c in cols:
         if c.allowed_values and c.data_type == "String":
-            out.append(("allowed_values", c.column_name, "error",
-                        f"{c.column_name} MUST be one of: {', '.join(c.allowed_values)}"))
+            out.append(
+                (
+                    "allowed_values",
+                    c.column_name,
+                    "error",
+                    f"{c.column_name} MUST be one of: {', '.join(c.allowed_values)}",
+                )
+            )
     names = {c.column_name for c in cols}
     if {"ServiceCategory", "ServiceSubcategory"} <= names:
-        out.append(("subcategory_matches_category", "ServiceSubcategory", "error",
-                    "ServiceSubcategory MUST belong to the row's ServiceCategory"))
+        out.append(
+            (
+                "subcategory_matches_category",
+                "ServiceSubcategory",
+                "error",
+                "ServiceSubcategory MUST belong to the row's ServiceCategory",
+            )
+        )
     out.append(("charge_period_order", "ChargePeriodEnd", "error", "ChargePeriodEnd MUST be after ChargePeriodStart"))
-    out.append(("billing_period_order", "BillingPeriodEnd", "error", "BillingPeriodEnd MUST be after BillingPeriodStart"))
+    out.append(
+        ("billing_period_order", "BillingPeriodEnd", "error", "BillingPeriodEnd MUST be after BillingPeriodStart")
+    )
     for cur in ("BillingCurrency", "PricingCurrency"):
         if cur in names:
             out.append(("currency_code", cur, "error", f"{cur} MUST be an ISO 4217 alphabetic code"))
-    out.append(("consumed_quantity_usage_only", "ConsumedQuantity", "warning",
-                "ConsumedQuantity MUST be null unless ChargeCategory is 'Usage'"))
-    out.append(("commitment_status_requires_id", "CommitmentDiscountStatus", "error",
-                "CommitmentDiscountStatus MUST be null when CommitmentDiscountId is null"))
+    out.append(
+        (
+            "consumed_quantity_usage_only",
+            "ConsumedQuantity",
+            "warning",
+            "ConsumedQuantity MUST be null unless ChargeCategory is 'Usage'",
+        )
+    )
+    out.append(
+        (
+            "commitment_status_requires_id",
+            "CommitmentDiscountStatus",
+            "error",
+            "CommitmentDiscountStatus MUST be null when CommitmentDiscountId is null",
+        )
+    )
     out.append(("custom_column_prefix", None, "warning", "Columns that are not FOCUS columns SHOULD use the x_ prefix"))
     out.append(("column_name_case", None, "warning", "FOCUS column names are case-sensitive (PascalCase)"))
     return out
 
 
-def _accumulate(batch: pa.RecordBatch, cols: tuple[ColumnSpec, ...], present: set[str], counts: dict[str, _Counter]) -> None:
+def _accumulate(
+    batch: pa.RecordBatch, cols: tuple[ColumnSpec, ...], present: set[str], counts: dict[str, _Counter]
+) -> None:
     n = batch.num_rows
 
-    def get(name: str) -> pa.Array | None:
+    def get(name: str) -> Arr | None:
         return batch.column(name) if name in batch.schema.names and name in present else None
 
     for c in cols:
@@ -160,16 +202,18 @@ def _accumulate(batch: pa.RecordBatch, cols: tuple[ColumnSpec, ...], present: se
         if c.column_name == "ServiceSubcategory" and c.subcategory_parent and get("ServiceCategory") is not None:
             parent_map = c.subcategory_parent
             parents = pa.array([parent_map.get(v) if v is not None else None for v in arr.to_pylist()], pa.string())
-            cat = batch.column("ServiceCategory")
-            bad = pc.and_(pc.and_(pc.is_valid(parents), pc.is_valid(cat)), pc.not_equal(parents, cat))
-            label = pc.binary_join_element_wise(arr, pc.fill_null(cat, ""), " under ")
+            service_cat = batch.column("ServiceCategory")
+            bad = pc.and_(pc.and_(pc.is_valid(parents), pc.is_valid(service_cat)), pc.not_equal(parents, service_cat))
+            label = pc.binary_join_element_wise(arr, pc.fill_null(service_cat, ""), " under ")
             counts.setdefault(_key("subcategory_matches_category", "ServiceSubcategory"), _Counter()).add(n, bad, label)
         if c.column_name in ("BillingCurrency", "PricingCurrency"):
             ok = pc.match_substring_regex(arr, _CURRENCY.pattern)
             bad = pc.and_(pc.is_valid(arr), pc.invert(pc.fill_null(ok, False)))
             counts.setdefault(_key("currency_code", c.column_name), _Counter()).add(n, bad, arr)
-    for start, end, check in (("ChargePeriodStart", "ChargePeriodEnd", "charge_period_order"),
-                              ("BillingPeriodStart", "BillingPeriodEnd", "billing_period_order")):
+    for start, end, check in (
+        ("ChargePeriodStart", "ChargePeriodEnd", "charge_period_order"),
+        ("BillingPeriodStart", "BillingPeriodEnd", "billing_period_order"),
+    ):
         s, e = get(start), get(end)
         if s is not None and e is not None:
             counts.setdefault(_key(check, end), _Counter()).add(n, pc.less_equal(e, s), pc.cast(e, pa.string()))
@@ -193,27 +237,62 @@ def _report(plan: Plan, counts: dict[str, _Counter]) -> pa.RecordBatch:
             ok = col in present
             spec = next(c for c in cols if c.column_name == col)
             status = "pass" if ok else ("fail" if spec.feature_level == "Mandatory" else "not_applicable")
-            rows.append({"check_name": check, "column_name": col, "severity": severity, "status": status,
-                         "rows_checked": total_rows, "failing_rows": total_rows if status == "fail" else 0,
-                         "sample_value": None, "detail": detail + ("" if ok else "; the source does not provide it")})
+            rows.append(
+                {
+                    "check_name": check,
+                    "column_name": col,
+                    "severity": severity,
+                    "status": status,
+                    "rows_checked": total_rows,
+                    "failing_rows": total_rows if status == "fail" else 0,
+                    "sample_value": None,
+                    "detail": detail + ("" if ok else "; the source does not provide it"),
+                }
+            )
             continue
         if check in ("custom_column_prefix", "column_name_case"):
             bad = custom if check == "custom_column_prefix" else case
             applicable = plan.mapper.token == "focus"
-            rows.append({"check_name": check, "column_name": col, "severity": severity,
-                         "status": ("fail" if bad else "pass") if applicable else "not_applicable",
-                         "rows_checked": total_rows, "failing_rows": len(bad),
-                         "sample_value": ", ".join(bad[:10]) or None, "detail": detail})
+            rows.append(
+                {
+                    "check_name": check,
+                    "column_name": col,
+                    "severity": severity,
+                    "status": ("fail" if bad else "pass") if applicable else "not_applicable",
+                    "rows_checked": total_rows,
+                    "failing_rows": len(bad),
+                    "sample_value": ", ".join(bad[:10]) or None,
+                    "detail": detail,
+                }
+            )
             continue
         counter = counts.get(_key(check, col))
         if counter is None:
-            rows.append({"check_name": check, "column_name": col, "severity": severity, "status": "not_applicable",
-                         "rows_checked": 0, "failing_rows": 0, "sample_value": None,
-                         "detail": detail + "; column not present"})
+            rows.append(
+                {
+                    "check_name": check,
+                    "column_name": col,
+                    "severity": severity,
+                    "status": "not_applicable",
+                    "rows_checked": 0,
+                    "failing_rows": 0,
+                    "sample_value": None,
+                    "detail": detail + "; column not present",
+                }
+            )
             continue
-        rows.append({"check_name": check, "column_name": col, "severity": severity,
-                     "status": "fail" if counter.fails else "pass", "rows_checked": counter.rows,
-                     "failing_rows": counter.fails, "sample_value": counter.sample, "detail": detail})
+        rows.append(
+            {
+                "check_name": check,
+                "column_name": col,
+                "severity": severity,
+                "status": "fail" if counter.fails else "pass",
+                "rows_checked": counter.rows,
+                "failing_rows": counter.fails,
+                "sample_value": counter.sample,
+                "detail": detail,
+            }
+        )
     return pa.RecordBatch.from_pylist(rows, schema=RESULT_SCHEMA)
 
 
@@ -287,8 +366,9 @@ class FocusValidate(TableFunctionGenerator[ValidateArgs, ValidateState]):
         cols = columns_for(plan.request.spec_version)
         present, _, _ = _present(plan)
         counts = {k: _Counter(**v) for k, v in json.loads(state.counts).items()}
-        cursor = ScanCursor(scan_id=state.scan_id, file_idx=state.file_idx, unit_pos=state.unit_pos,
-                            batch_idx=state.batch_idx)
+        cursor = ScanCursor(
+            scan_id=state.scan_id, file_idx=state.file_idx, unit_pos=state.unit_pos, batch_idx=state.batch_idx
+        )
         wanted = [c.column_name for c in cols]
         deadline = time.monotonic() + TIME_BUDGET_SECONDS
         finished = False
@@ -299,7 +379,9 @@ class FocusValidate(TableFunctionGenerator[ValidateArgs, ValidateState]):
                 break
             _accumulate(batch, cols, present, counts)
         state.file_idx, state.unit_pos, state.batch_idx = cursor.file_idx, cursor.unit_pos, cursor.batch_idx
-        state.counts = json.dumps({k: {"rows": c.rows, "fails": c.fails, "sample": c.sample} for k, c in counts.items()})
+        state.counts = json.dumps(
+            {k: {"rows": c.rows, "fails": c.fails, "sample": c.sample} for k, c in counts.items()}
+        )
         if not finished:
             out.emit(pa.RecordBatch.from_pylist([], schema=RESULT_SCHEMA).select(params.output_schema.names))
             return
@@ -308,6 +390,11 @@ class FocusValidate(TableFunctionGenerator[ValidateArgs, ValidateState]):
 
 
 def _request(args: ValidateArgs, store: scan.ObjectStoreConfig | None) -> ScanRequest:
-    return ScanRequest(path=args.path, source=args.source, spec_version=args.spec_version, money_scale=10,
-                       file_format=args.file_format, store=store)
-
+    return ScanRequest(
+        path=args.path,
+        source=args.source,
+        spec_version=args.spec_version,
+        money_scale=10,
+        file_format=args.file_format,
+        store=store,
+    )

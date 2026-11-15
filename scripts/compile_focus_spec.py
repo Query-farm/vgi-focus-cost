@@ -52,7 +52,9 @@ def _list_files(tag: str, directory: str) -> list[str]:
     return sorted(
         e["path"]
         for e in tree["tree"]
-        if e["path"].startswith(directory + "/") and e["path"].endswith(".md") and e["path"].count("/") == directory.count("/") + 1
+        if e["path"].startswith(directory + "/")
+        and e["path"].endswith(".md")
+        and e["path"].count("/") == directory.count("/") + 1
     )
 
 

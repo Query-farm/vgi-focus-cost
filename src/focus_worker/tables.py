@@ -35,11 +35,15 @@ class NoArgs:
 
 def _constraints(table: str, key: list[str]) -> tuple[Any, ...]:
     records = [
-        constraint_record(["main"], table, f"{k}_not_null", "NOT_NULL", [[k]], enforcement="ENFORCED", validation="ALL_ROWS")
+        constraint_record(
+            ["main"], table, f"{k}_not_null", "NOT_NULL", [[k]], enforcement="ENFORCED", validation="ALL_ROWS"
+        )
         for k in key
     ]
     records.append(
-        constraint_record(["main"], table, "pk", "PRIMARY_KEY", [[k] for k in key], enforcement="ENFORCED", validation="ALL_ROWS")
+        constraint_record(
+            ["main"], table, "pk", "PRIMARY_KEY", [[k] for k in key], enforcement="ENFORCED", validation="ALL_ROWS"
+        )
     )
     return tuple(records)
 
@@ -60,9 +64,20 @@ COLUMNS_SCHEMA = pa.schema(
         column("feature_level", pa.string(), "'Mandatory', 'Conditional' or 'Recommended'.", nullable=False),
         column("allows_nulls", pa.bool_(), "Whether the spec allows NULL in this column.", nullable=False),
         column("data_type", pa.string(), "The spec's data type: String, Decimal, Date/Time or JSON.", nullable=False),
-        column("duckdb_type", pa.string(), "The DuckDB type focus() and to_focus() emit for this column.", nullable=False),
-        column("value_format", pa.string(), "The spec's value format, e.g. 'Numeric Format', 'Allowed Values'.", nullable=False),
-        column("allowed_values", pa.list_(pa.string()), "The closed set of allowed values, or NULL when any value is allowed."),
+        column(
+            "duckdb_type", pa.string(), "The DuckDB type focus() and to_focus() emit for this column.", nullable=False
+        ),
+        column(
+            "value_format",
+            pa.string(),
+            "The spec's value format, e.g. 'Numeric Format', 'Allowed Values'.",
+            nullable=False,
+        ),
+        column(
+            "allowed_values",
+            pa.list_(pa.string()),
+            "The closed set of allowed values, or NULL when any value is allowed.",
+        ),
         column("introduced", pa.string(), "The FOCUS version that introduced the column.", nullable=False),
     ]
 )
@@ -111,7 +126,9 @@ class FocusColumnsSource(TableFunctionGenerator[NoArgs, None]):
         out.finish()
 
 
-def _table_tags(title: str, keywords: str, doc_llm: str, doc_md: str, schema: pa.Schema, examples: list[dict[str, Any]]) -> dict[str, str]:
+def _table_tags(
+    title: str, keywords: str, doc_llm: str, doc_md: str, schema: pa.Schema, examples: list[dict[str, Any]]
+) -> dict[str, str]:
     return {
         **object_tags(title=title, category="reference", keywords=keywords, doc_llm=doc_llm, doc_md=doc_md),
         "vgi.result_columns_schema": json.dumps(schema_columns_json(schema)),
@@ -134,7 +151,7 @@ FOCUS_COLUMNS = Table(
         "(Mandatory/Conditional/Recommended), allows_nulls, data_type, duckdb_type (what this worker emits), "
         "value_format, allowed_values (VARCHAR[] or NULL) and introduced. Filter on spec_version. Use it to list "
         "mandatory columns, look up allowed values (e.g. ChargeCategory) or diff versions.",
-        "## focus_columns\n\nThe FOCUS spec as a table: one row per column per version (1.0–1.4).\n\n"
+        "## focus_columns\n\nThe FOCUS spec as a table: one row per column per version (1.0-1.4).\n\n"
         "Column definitions © FOCUS contributors, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).",
         COLUMNS_SCHEMA,
         [
@@ -149,9 +166,16 @@ FOCUS_COLUMNS = Table(
                 "sql": "SELECT column_name FROM focus.main.focus_columns WHERE spec_version = '1.3' "
                 "AND column_name NOT IN (SELECT column_name FROM focus.main.focus_columns WHERE spec_version = '1.2') "
                 "ORDER BY column_name",
-                "expected_result": [["AllocatedMethodDetails"], ["AllocatedMethodId"], ["AllocatedResourceId"],
-                                    ["AllocatedResourceName"], ["AllocatedTags"], ["ContractApplied"],
-                                    ["HostProviderName"], ["ServiceProviderName"]],
+                "expected_result": [
+                    ["AllocatedMethodDetails"],
+                    ["AllocatedMethodId"],
+                    ["AllocatedResourceId"],
+                    ["AllocatedResourceName"],
+                    ["AllocatedTags"],
+                    ["ContractApplied"],
+                    ["HostProviderName"],
+                    ["ServiceProviderName"],
+                ],
             },
         ],
     ),
@@ -161,13 +185,28 @@ FOCUS_COLUMNS = Table(
 
 PROVIDER_MAP_SCHEMA = pa.schema(
     [
-        column("source", pa.string(), "Source token for focus()/to_focus(): aws_cur2, azure, azure_amortized, gcp, focus.", nullable=False),
+        column(
+            "source",
+            pa.string(),
+            "Source token for focus()/to_focus(): aws_cur2, azure, azure_amortized, gcp, focus.",
+            nullable=False,
+        ),
         column("provider", pa.string(), "Cloud: aws, azure, gcp, or 'any' for native FOCUS files.", nullable=False),
         column("focus_column", pa.string(), "The FOCUS (or x_ extension) column produced.", nullable=False),
-        column("source_columns", pa.list_(pa.string()), "Raw export columns read to produce it (empty for constants).", nullable=False),
+        column(
+            "source_columns",
+            pa.list_(pa.string()),
+            "Raw export columns read to produce it (empty for constants).",
+            nullable=False,
+        ),
         column("transform", pa.string(), "How the value is derived, in words.", nullable=False),
         column("notes", pa.string(), "Caveats and provider-specific detail; NULL when none."),
-        column("filter_pushdown", pa.bool_(), "True when a comparison on this column is pushed into the Parquet scan.", nullable=False),
+        column(
+            "filter_pushdown",
+            pa.bool_(),
+            "True when a comparison on this column is pushed into the Parquet scan.",
+            nullable=False,
+        ),
     ]
 )
 
@@ -177,15 +216,17 @@ def provider_map_rows() -> list[dict[str, Any]]:
     rows = []
     for token, m in MAPPERS.items():
         for r in m.rules:
-            rows.append({
-                "source": token,
-                "provider": m.provider,
-                "focus_column": r.focus_column,
-                "source_columns": list(r.sources),
-                "transform": r.transform,
-                "notes": r.notes or None,
-                "filter_pushdown": r.direct is not None,
-            })
+            rows.append(
+                {
+                    "source": token,
+                    "provider": m.provider,
+                    "focus_column": r.focus_column,
+                    "source_columns": list(r.sources),
+                    "transform": r.transform,
+                    "notes": r.notes or None,
+                    "filter_pushdown": r.direct is not None,
+                }
+            )
     return rows
 
 
@@ -254,7 +295,12 @@ PROVIDER_MAP = Table(
 SERVICE_MAP_SCHEMA = pa.schema(
     [
         column("provider", pa.string(), "aws, azure or gcp.", nullable=False),
-        column("service_code", pa.string(), "Provider service key: AWS product code, Azure MeterCategory, GCP service description.", nullable=False),
+        column(
+            "service_code",
+            pa.string(),
+            "Provider service key: AWS product code, Azure MeterCategory, GCP service description.",
+            nullable=False,
+        ),
         column("service_name", pa.string(), "The ServiceName emitted for it.", nullable=False),
         column("service_category", pa.string(), "FOCUS ServiceCategory.", nullable=False),
         column("service_subcategory", pa.string(), "FOCUS ServiceSubcategory (1.1+).", nullable=False),
@@ -286,8 +332,13 @@ class ServiceMapSource(TableFunctionGenerator[NoArgs, None]):
     def process(cls, params: ProcessParams[NoArgs], state: None, out: OutputCollector) -> None:
         """Emit the curated service classification."""
         rows = [
-            {"provider": s.provider, "service_code": s.code, "service_name": s.name, "service_category": s.category,
-             "service_subcategory": s.subcategory}
+            {
+                "provider": s.provider,
+                "service_code": s.code,
+                "service_name": s.name,
+                "service_category": s.category,
+                "service_subcategory": s.subcategory,
+            }
             for s in services.SERVICES
         ]
         out.emit(pa.RecordBatch.from_pylist(rows, schema=SERVICE_MAP_SCHEMA).select(params.output_schema.names))
@@ -324,7 +375,12 @@ SERVICE_MAP = Table(
 CHARGE_MAP_SCHEMA = pa.schema(
     [
         column("source", pa.string(), "Source token: aws_cur2, azure (both Azure tokens) or gcp.", nullable=False),
-        column("charge_type", pa.string(), "The provider's raw charge type (line_item_line_item_type, ChargeType, cost_type).", nullable=False),
+        column(
+            "charge_type",
+            pa.string(),
+            "The provider's raw charge type (line_item_line_item_type, ChargeType, cost_type).",
+            nullable=False,
+        ),
         column("charge_category", pa.string(), "FOCUS ChargeCategory it maps to.", nullable=False),
         column("charge_frequency", pa.string(), "FOCUS ChargeFrequency where the charge type decides it, else NULL."),
     ]
@@ -332,13 +388,19 @@ CHARGE_MAP_SCHEMA = pa.schema(
 
 
 def charge_rows() -> list[dict[str, Any]]:
-    """The charge-type tables the mappers use."""
-    rows = [{"source": "aws_cur2", "charge_type": k, "charge_category": c, "charge_frequency": f}
-            for k, (c, f) in aws.LINE_ITEM_TYPES.items()]
-    rows += [{"source": "azure", "charge_type": k, "charge_category": c, "charge_frequency": None}
-             for k, c in azure.CHARGE_TYPES.items()]
-    rows += [{"source": "gcp", "charge_type": k, "charge_category": c, "charge_frequency": None}
-             for k, c in gcp.COST_TYPES.items()]
+    """Return the charge-type tables the mappers use."""
+    rows: list[dict[str, Any]] = [
+        {"source": "aws_cur2", "charge_type": k, "charge_category": c, "charge_frequency": f}
+        for k, (c, f) in aws.LINE_ITEM_TYPES.items()
+    ]
+    rows += [
+        {"source": "azure", "charge_type": k, "charge_category": c, "charge_frequency": None}
+        for k, c in azure.CHARGE_TYPES.items()
+    ]
+    rows += [
+        {"source": "gcp", "charge_type": k, "charge_category": c, "charge_frequency": None}
+        for k, c in gcp.COST_TYPES.items()
+    ]
     return rows
 
 
@@ -389,8 +451,12 @@ CHARGE_TYPE_MAP = Table(
                 "description": "AWS line item types that are FOCUS purchases",
                 "sql": "SELECT charge_type, charge_frequency FROM focus.main.charge_type_map "
                 "WHERE source = 'aws_cur2' AND charge_category = 'Purchase' ORDER BY charge_type",
-                "expected_result": [["Fee", "One-Time"], ["RIFee", "Recurring"],
-                                    ["SavingsPlanRecurringFee", "Recurring"], ["SavingsPlanUpfrontFee", "One-Time"]],
+                "expected_result": [
+                    ["Fee", "One-Time"],
+                    ["RIFee", "Recurring"],
+                    ["SavingsPlanRecurringFee", "Recurring"],
+                    ["SavingsPlanUpfrontFee", "One-Time"],
+                ],
             },
         ],
     ),

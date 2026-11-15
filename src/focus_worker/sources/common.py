@@ -8,9 +8,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
 
-from ..convert import TAGS_TYPE, UTC_TS
+from ..convert import TAGS_TYPE, UTC_TS, Arr, pc
+from ..convert import nulls as pa_nulls
 from ..spec import EXTENSION_COLUMNS, EXTENSION_NAMES, arrow_type, column_comment, columns_for
 from .base import Rule, Src, snake
 
@@ -33,8 +33,8 @@ class Mapper:
     title: str
     rules: tuple[Rule, ...]
     signature: tuple[str, ...]  # raw columns (lower case) whose presence identifies the format
-    map_fn: Callable[[Src, MapOptions], dict[str, pa.Array]]
-    expand_fn: Callable[[Src, dict[str, pa.Array], MapOptions], dict[str, pa.Array] | None] | None = None
+    map_fn: Callable[[Src, MapOptions], dict[str, Arr]]
+    expand_fn: Callable[[Src, dict[str, Arr], MapOptions], dict[str, Arr] | None] | None = None
     rename_fn: Callable[[str], str] | None = None
     # Raw columns that decide which rows exist (e.g. AWS synthetic unused-commitment rows).
     row_sources: tuple[str, ...] = ()
@@ -45,7 +45,7 @@ class Mapper:
         self.rule_index.update({r.focus_column: r for r in self.rules})
 
     def raw_columns_for(self, focus_columns: Iterable[str], available: Iterable[str]) -> list[str]:
-        """The raw columns (as named in the file) needed to produce ``focus_columns``.
+        """Return the raw columns (as named in the file) needed to produce ``focus_columns``.
 
         Columns that influence other columns through generic rules (charge type,
         periods) are always included. Patterns such as ``resource_tags_*`` match
@@ -88,18 +88,22 @@ _ALWAYS = ("ChargeCategory", "ChargePeriodStart", "BillingPeriodStart", "Commitm
 
 
 def output_schema(version: str, money_scale: int, extras: list[pa.Field[Any]] | None = None) -> pa.Schema:
-    """The FOCUS output schema for one spec version, plus the x_ extension columns."""
+    """Return the FOCUS output schema for one spec version, plus the x_ extension columns."""
     fields = [
-        pa.field(c.column_name, arrow_type(c, money_scale), nullable=True,
-                 metadata={b"comment": column_comment(c).encode()})
+        pa.field(
+            c.column_name, arrow_type(c, money_scale), nullable=True, metadata={b"comment": column_comment(c).encode()}
+        )
         for c in columns_for(version)
     ]
-    fields += [pa.field(name, pa.string(), nullable=True, metadata={b"comment": doc.encode()}) for name, doc in EXTENSION_COLUMNS]
+    fields += [
+        pa.field(name, pa.string(), nullable=True, metadata={b"comment": doc.encode()})
+        for name, doc in EXTENSION_COLUMNS
+    ]
     fields += extras or []
     return pa.schema(fields)
 
 
-def _bridge_versions(cols: dict[str, pa.Array], n: int) -> None:
+def _bridge_versions(cols: dict[str, Arr], n: int) -> None:
     """Fill renamed columns in both directions so any version can be emitted.
 
     FOCUS 1.3 replaced ProviderName/PublisherName with HostProviderName (who hosts
@@ -115,7 +119,7 @@ def _bridge_versions(cols: dict[str, pa.Array], n: int) -> None:
         cols["ProviderName"] = cols["HostProviderName"]
 
 
-def apply_generic_rules(cols: dict[str, pa.Array], n: int) -> None:
+def apply_generic_rules(cols: dict[str, Arr], n: int) -> None:
     """FOCUS rules every provider mapping shares.
 
     * ``ChargeClass`` is 'Correction' when the charge period starts before the
@@ -138,16 +142,16 @@ def apply_generic_rules(cols: dict[str, pa.Array], n: int) -> None:
                 cols[name] = pc.if_else(keep, arr, pa.scalar(None, arr.type))
 
 
-def assemble(cols: dict[str, pa.Array], schema: pa.Schema, n: int) -> pa.RecordBatch:
+def assemble(cols: dict[str, Arr], schema: pa.Schema, n: int) -> pa.RecordBatch:
     """Cast the canonical columns to ``schema`` (NULL for anything not produced)."""
     _bridge_versions(cols, n)
     if len(schema) == 0:  # e.g. count(*): no columns, but the row count still matters
-        return pa.RecordBatch.from_arrays([pa.nulls(n)], names=["_"]).select([])
+        return pa.RecordBatch.from_arrays([pa_nulls(n, pa.null())], names=["_"]).select([])
     arrays = []
     for f in schema:
         arr = cols.get(f.name)
         if arr is None:
-            arrays.append(pa.nulls(n, f.type))
+            arrays.append(pa_nulls(n, f.type))
             continue
         if isinstance(arr, pa.ChunkedArray):
             arr = arr.combine_chunks()
@@ -157,9 +161,9 @@ def assemble(cols: dict[str, pa.Array], schema: pa.Schema, n: int) -> pa.RecordB
     return pa.RecordBatch.from_arrays(arrays, schema=schema)
 
 
-def _cast(arr: pa.Array, t: pa.DataType, name: str) -> pa.Array:
+def _cast(arr: Arr, t: pa.DataType, name: str) -> Arr:
     if pa.types.is_null(arr.type):
-        return pa.nulls(len(arr), t)
+        return pa_nulls(len(arr), t)
     if t.equals(UTC_TS) or t.equals(TAGS_TYPE):
         return arr.cast(t)
     try:
@@ -169,5 +173,5 @@ def _cast(arr: pa.Array, t: pa.DataType, name: str) -> pa.Array:
 
 
 def extension_names() -> frozenset[str]:
-    """The x_ columns every mapped row carries."""
+    """Return the x_ columns every mapped row carries."""
     return EXTENSION_NAMES

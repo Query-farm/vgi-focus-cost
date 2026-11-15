@@ -44,7 +44,9 @@ class ToFocusArgs:
     money_scale: Annotated[int, Arg("money_scale", default=DEFAULT_MONEY_SCALE, doc=SCALE_DOC, ge=2, le=10)]
 
 
-def _schema_and_token(params: BindParams[ToFocusArgs] | ProcessParams[ToFocusArgs], input_schema: pa.Schema) -> tuple[str, pa.Schema]:
+def _schema_and_token(
+    params: BindParams[ToFocusArgs] | ProcessParams[ToFocusArgs], input_schema: pa.Schema
+) -> tuple[str, pa.Schema]:
     token = resolve_source(params.args.source, input_schema.names)
     extras = extra_fields(input_schema) if token == "focus" else []
     return token, output_schema(params.args.spec_version, params.args.money_scale, extras)
