@@ -37,7 +37,7 @@ GROUP BY ALL ORDER BY cost DESC;
 Workers are not published to PyPI; run this one straight from a release tag:
 
 ```bash
-uvx --from git+https://github.com/Query-farm/vgi-focus-cost@v0.1.0 vgi-focus-worker --help
+uvx --from git+https://github.com/Query-farm/vgi-focus-cost@v0.1.1 vgi-focus-worker --help
 ```
 
 In DuckDB 2.0 (or [Haybarn](https://query.farm/products/haybarn) 2.0):
@@ -47,7 +47,7 @@ SET allow_extension_repositories = 'allowed';
 CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm WITH PREFIX 'https://duckdb-extensions.query.farm';
 INSTALL vgi FROM query_farm;
 LOAD vgi FROM query_farm;
-ATTACH 'focus' (TYPE vgi, LOCATION 'uvx --from git+https://github.com/Query-farm/vgi-focus-cost@v0.1.0 vgi-focus-worker');
+ATTACH 'focus' (TYPE vgi, LOCATION 'uvx --from git+https://github.com/Query-farm/vgi-focus-cost@v0.1.1 vgi-focus-worker');
 ```
 
 (In Haybarn: `INSTALL vgi FROM community; LOAD vgi;`.) For a local checkout, `make build` and use
