@@ -5,7 +5,7 @@ description = "Normalize AWS, Azure and GCP billing exports into the FinOps FOCU
 readme = "README.md"
 license = "0BSD"
 license-files = ["LICENSE", "NOTICE.md"]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     # [http] adds the HTTP transport (`--http`) used by Docker deploys; [haybarn]
     # evaluates pushed-down filters (focus() sets filter_pushdown + auto_apply_filters).
@@ -37,7 +37,7 @@ packages = ["src/focus_worker"]
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF", "D"]
@@ -50,7 +50,7 @@ ignore = ["D203", "D213", "RUF012"]
 
 [tool.mypy]
 strict = true
-python_version = "3.13"
+python_version = "3.14"
 files = ["src", "tests", "examples"]
 
 [[tool.mypy.overrides]]

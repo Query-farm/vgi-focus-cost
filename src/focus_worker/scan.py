@@ -420,7 +420,7 @@ def row_groups(frag: Any, expr: ds.Expression | None) -> list[int]:
     try:
         subset: Any = frag.subset(filter=expr)
         return [rg.id for rg in subset.row_groups]
-    except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+    except pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError:
         return list(range(frag.metadata.num_row_groups))
 
 

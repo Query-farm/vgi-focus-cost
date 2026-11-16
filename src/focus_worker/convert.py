@@ -152,7 +152,7 @@ def to_timestamp(arr: Arr | None, n: int, *, what: str) -> Arr:
     for attempt in (_ts_iso_tz, _ts_iso_naive, *(_strptime(f) for f in _TS_FORMATS)):
         try:
             return attempt(text)
-        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, ValueError):
+        except pa.ArrowInvalid, pa.ArrowNotImplementedError, ValueError:
             continue
     sample = next((v for v in text.to_pylist() if v is not None), None)
     raise ConversionError(f"{what}: cannot parse {sample!r} as a timestamp")
